@@ -342,13 +342,6 @@ export function createPlanEditor(options) {
     return JSON.stringify({ height: getActiveModel()?.height, editor: currentData() });
   }
 
-  function updateHistoryButtons() {
-    const undoButton = document.querySelector('#undoButton');
-    const redoButton = document.querySelector('#redoButton');
-    if (undoButton) undoButton.disabled = undoStack.length === 0;
-    if (redoButton) redoButton.disabled = redoStack.length === 0;
-  }
-
   function pushUndo() {
     const snap = editorSnapshot();
     const last = undoStack[undoStack.length - 1];
@@ -356,7 +349,6 @@ export function createPlanEditor(options) {
       undoStack.push(snap);
       if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
       redoStack.length = 0;
-      updateHistoryButtons();
     }
   }
 
@@ -389,7 +381,6 @@ export function createPlanEditor(options) {
       renderAll();
     }
     syncPanel();
-    updateHistoryButtons();
   }
 
   function undo() {
@@ -2423,8 +2414,6 @@ export function createPlanEditor(options) {
 
   document.querySelector('#editView').addEventListener('click', () => enabled ? exit() : enter());
 
-  document.querySelector('#undoButton').addEventListener('click', undo);
-  document.querySelector('#redoButton').addEventListener('click', redo);
   addEventListener('keydown', event => {
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
