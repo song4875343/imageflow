@@ -157,12 +157,18 @@ function updatePerspectiveOutlines(){ const visible=activeCamera===topCamera||pe
 function updateSunPosition(){ const x=Number(sunXInput.value), z=Number(sunZInput.value), elevation=Number(sunElevationInput.value), length=Math.hypot(x,z)||1, distance=18, radians=THREE.MathUtils.degToRad(elevation), horizontal=distance*Math.cos(radians); sun.position.set(x/length*horizontal,distance*Math.sin(radians),z/length*horizontal); sun.target.position.set(0,0,0); sun.target.updateMatrixWorld(); document.querySelector('#sunXValue').textContent=String(x); document.querySelector('#sunZValue').textContent=String(z); document.querySelector('#sunElevationValue').textContent=`${elevation}°`; sun.visible=sunEnabled; sun.castShadow=sunEnabled&&activeCamera!==topCamera; invalidateShadows(); renderer.render(scene,activeCamera); }
 [sunXInput,sunZInput,sunElevationInput].forEach(input=>input.addEventListener('input',updateSunPosition)); sunIntensityInput.addEventListener('input',updateSunIntensity); sunToggleInput.addEventListener('change',()=>{ sunEnabled=sunToggleInput.checked; sunToggleInput.nextElementSibling.textContent=sunEnabled?'开启':'关闭'; updateSunPosition(); }); ambientIntensityInput.addEventListener('input',updateAmbientLight); perspectiveOutlinesInput.addEventListener('change',updatePerspectiveOutlines); updateSunIntensity(); updateAmbientLight(); updateSunPosition();
 const PERSPECTIVE_AZIMUTHS = { 45: '东南', 135: '东北', 315: '西南', 225: '西北' };
+const PERSPECTIVE_POLAR_DEG = 52; // 相机相对竖直方向的极角，约 38° 俯视，符合 3D 软件习惯
 function setCameraAzimuth(azimuthDeg) {
-  const distance = Math.max(activeModel.width, activeModel.depth) + 6.5;
-  const height = activeModel.height;
-  const radians = THREE.MathUtils.degToRad(azimuthDeg);
-  const targetY = Math.max(height * 0.42, 1.2);
-  camera.position.set(Math.sin(radians) * distance, targetY + height * 0.75, Math.cos(radians) * distance);
+  const size = Math.max(activeModel.width, activeModel.depth);
+  const targetY = Math.max(activeModel.height * 0.42, 1.2);
+  const radius = size * 1.15 + 4.5;
+  const polar = THREE.MathUtils.degToRad(PERSPECTIVE_POLAR_DEG);
+  const azimuth = THREE.MathUtils.degToRad(azimuthDeg);
+  camera.position.set(
+    Math.sin(azimuth) * radius * Math.sin(polar),
+    targetY + radius * Math.cos(polar),
+    Math.cos(azimuth) * radius * Math.sin(polar)
+  );
   controls.object = camera;
   controls.enableRotate = true;
   controls.minDistance = 0.2;
