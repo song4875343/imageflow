@@ -1,0 +1,3147 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>图片编辑</title>
+    <style>
+        body { margin: 0; padding: 0; display: flex; height: 100vh; background-color: #333; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        
+        /* 侧边栏样式 */
+        #sidebar { width: 280px; background: #252526; color: #ccc; padding: 16px; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #000; box-shadow: 2px 0 5px rgba(0,0,0,0.5); z-index: 10; overflow-y: auto; max-height: 100vh; box-sizing: border-box; }
+        /* 隐藏侧栏滚动条但保留滚动功能 */
+        #sidebar {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        #sidebar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+        h3 { margin: 0 0 10px 0; color: #fff; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        
+        .control-group { background: #2d2d30; padding: 10px; border-radius: 4px; border: 1px solid #3e3e42; }
+        .control-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: bold; color: #9cdcfe; }
+        
+        input[type=range] { width: 100%; cursor: pointer; }
+        
+        .radio-group label { display: block; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
+        .radio-group input { margin-right: 8px; }
+        
+        .hint-box { font-size: 11px; color: #888; margin-top: 5px; line-height: 1.4; }
+        .key-tag { background: #444; padding: 1px 4px; border-radius: 3px; color: #fff; font-family: monospace; }
+        
+        #color-preview-box { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        #color-swatch { width: 30px; height: 30px; border: 2px solid #555; border-radius: 4px; background: transparent; transition: background 0.2s; }
+        
+        .sidebar-btn { height:32px; min-height:32px; box-sizing:border-box; background:#0e639c; color:white; border:none; padding:0 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; }
+        .sidebar-btn.secondary { background: #333; border: 1px solid #555; color: #ccc; }
+        button:not(.reference-add):not(.reference-remove) { height:32px; min-height:32px; box-sizing:border-box; }
+        .sidebar-btn:hover { filter: brightness(1.05); }
+        .expert-field { width:100%; box-sizing:border-box; padding:8px; background:#1f1f1f; color:#eee; border:1px solid #555; border-radius:4px; font:inherit; }
+        .expert-icon-btn { width:32px; min-width:32px; height:32px; padding:0; font-size:16px; line-height:1; }
+        .reference-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:8px; }
+        .reference-tile { position:relative; aspect-ratio:1; overflow:hidden; border:1px solid #4b4d52; border-radius:7px; background:#202124; }
+        .reference-tile img { width:100%; height:100%; object-fit:cover; display:block; }
+        .reference-add { display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:96px; aspect-ratio:1; box-sizing:border-box; border:1px dashed #66707a; color:#9cdcfe; background:linear-gradient(145deg,#25282c,#1d1f22); cursor:pointer; font-size:28px; }
+        .reference-add:hover { border-color:#4aa3df; color:#fff; background:#28333c; }
+        .reference-remove { position:absolute; top:4px; right:4px; width:20px; height:20px; border:0; border-radius:50%; color:#fff; background:rgba(0,0,0,.7); cursor:pointer; line-height:18px; }
+        .size-options { display:grid; grid-template-columns:52px 52px minmax(0,1fr); gap:6px; margin-top:10px; }
+        .size-option.custom-size-option { grid-column:1 / -1; }
+        .size-option { display:flex; align-items:center; justify-content:center; height:32px; min-height:32px; padding:0 5px; box-sizing:border-box; border:1px solid #555; border-radius:5px; background:#333; color:#ccc; cursor:pointer; font-size:11px; }
+        .size-option:has(input:checked) { border-color:#4aa3df; background:#173b54; color:#fff; }
+        .size-option input { margin-right:4px; }
+        .custom-size-inputs { display:flex; align-items:center; gap:4px; }
+        .custom-size-inputs input { width:58px; padding:5px; border:0; border-radius:3px; background:#1e1e1e; color:#fff; text-align:center; }
+        .aspect-ratio-select { width:100%; height:32px; min-height:32px; box-sizing:border-box; border:1px solid #555; border-radius:5px; padding:0 5px; color:#ddd; background:#333; font-size:11px; }
+        .size-option.is-disabled { opacity:.38; pointer-events:none; }
+        #canvas-wrapper { position:relative; flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:#26282b; }
+        #canvas-stage { flex:1; min-width:0; min-height:0; background:#524f4f; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative; }
+        #generation-preview { flex:0 0 12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border-top:1px solid #111; background:linear-gradient(180deg,#202225,#17191b); box-shadow:0 -6px 18px rgba(0,0,0,.25); }
+        .preview-heading { width:68px; flex:0 0 68px; display:flex; flex-direction:column; justify-content:center; color:#d8dde3; font-size:12px; letter-spacing:.08em; }
+        .preview-heading small { margin-top:5px; color:#737b84; letter-spacing:0; }
+        #generation-preview-items { flex:1; display:flex; gap:9px; align-items:center; overflow-x:auto; overflow-y:hidden; }
+        .generation-preview-empty { color:#656b72; font-size:12px; }
+        .generation-card { position:relative; flex:0 0 auto; height:calc(100% - 4px); aspect-ratio:1.35; overflow:hidden; border:1px solid #454b52; border-radius:7px; background:#111; box-shadow:0 4px 12px rgba(0,0,0,.28); cursor:pointer; }
+        .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
+        .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
+        .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
+        .generation-eye { position:absolute; top:5px; right:5px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:1px solid rgba(255,255,255,.25); border-radius:6px; color:#fff; background:rgba(12,14,16,.78); cursor:pointer; font-size:15px; }
+        .generation-eye.is-hidden { color:#737b84; background:rgba(12,14,16,.9); }
+        .generation-kind { position:absolute; left:5px; bottom:5px; padding:2px 5px; border-radius:3px; color:#dfe8ef; background:rgba(0,0,0,.72); font-size:10px; }
+        #sidebar > .control-group, #sidebar > .hint-box, #sidebar > h3 { display:none !important; }
+        #sidebar { flex:0 0 340px; width:340px; min-width:340px; max-width:340px; padding:0 0 0 48px; position:relative; overflow:hidden; max-height:100vh; gap:0; }
+        #imgedit-toolbar { position:absolute; inset:0 auto 0 0; width:48px; box-sizing:border-box; padding-top:18px; display:flex; flex-direction:column; align-items:center; border-right:1px solid #000; background:#303236; z-index:5; overflow:hidden; }
+        #expert-panel { position:absolute; inset:0 0 0 48px; width:auto !important; min-width:0; box-sizing:border-box; padding:16px; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; -ms-overflow-style:none; }
+        #expert-panel::-webkit-scrollbar { display:none; width:0; height:0; }
+        #expert-panel::-webkit-scrollbar-track { display:none; }
+        #expert-panel::-webkit-scrollbar-thumb { display:none; }
+        .imgedit-nav-item { width:36px; height:36px; margin-bottom:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; border-radius:7px; color:#888; transition:all .2s; }
+        .imgedit-nav-item:hover { background:rgba(255,255,255,.1); color:#fff; }
+        .imgedit-nav-item.active { background:#0e639c; color:#fff; }
+        .imgedit-nav-item svg { width:22px; height:22px; fill:currentColor; }
+        #expert-panel { display:block !important; }
+        #page-nav { display:none !important; }
+        .edit-scope-switch { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+        .edit-scope-option { display:flex; align-items:center; justify-content:center; gap:4px; height:32px; min-height:32px; box-sizing:border-box; border:1px solid #555; border-radius:5px; background:#333; cursor:pointer; font-size:11px; }
+        .edit-scope-option:has(input:checked) { border-color:#4aa3df; background:#173b54; color:#fff; }
+        .reference-order-note { margin-top:7px; padding:7px 8px; border-left:2px solid #4aa3df; color:#8e98a3; background:#24282c; font-size:11px; line-height:1.5; }
+        #preview-selection-toolbar { position:absolute; left:50%; bottom:calc(12.5vh + 12px); transform:translateX(-50%); z-index:300; width:max-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid #50545a; border-radius:12px; background:rgba(37,39,42,.96); box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); }
+        #preview-selection-toolbar[hidden] { display:none; }
+        .annotation-colors { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; }
+        .annotation-color { width:28px; min-width:28px; height:28px !important; min-height:28px !important; aspect-ratio:1; flex:0 0 28px; padding:0; border:3px solid transparent; border-radius:50%; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.12); }
+        .annotation-color.is-active { border-color:#d9dde1; transform:scale(1.12); }
+        .layer-actions { display:flex; align-items:center; justify-content:center; gap:7px; }
+        .layer-action { min-width:60px; height:32px; padding:0 9px; box-sizing:border-box; border:1px solid #555; border-radius:7px; color:#e5e7eb; background:#34363a; cursor:pointer; font-size:11px; }
+        .layer-action:hover { border-color:#6aafda; background:#3d4248; }
+        .layer-action.danger:hover { border-color:#d65f5f; background:#512d2d; }
+        .layer-action.is-active { border-color:#0e639c; background:#0e639c; color:#fff; }
+        .annotation-action { display:flex; align-items:center; gap:5px; }
+        .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
+        .save-choice-overlay[hidden] { display:none; }
+        .save-choice-panel { width:330px; max-width:calc(100% - 32px); padding:18px; box-sizing:border-box; border:1px solid #555b62; border-radius:12px; background:#292b2f; box-shadow:0 18px 55px rgba(0,0,0,.55); color:#e6e9ed; }
+        .save-choice-title { margin:0 0 7px; font-size:15px; color:#fff; }
+        .save-choice-note { margin:0 0 14px; color:#929aa3; font-size:11px; line-height:1.5; }
+        .save-choice-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .save-choice-actions .layer-action { width:100%; min-width:0; }
+        .save-choice-cancel { grid-column:1 / -1; }
+        .size-mismatch-panel { width:440px; }
+        .size-mismatch-values { margin:12px 0 8px; padding:10px 12px; border:1px solid #4b5057; border-radius:8px; background:#202225; color:#f2b38f; font-size:12px; line-height:1.65; }
+        .size-mismatch-recommendation { margin:0 0 15px; padding:8px 10px; border-left:2px solid #4aa3df; background:#22282d; color:#b9c3cc; font-size:11px; line-height:1.55; }
+        .size-mismatch-actions { display:grid; grid-template-columns:1fr 1fr 72px; gap:8px; }
+        .size-mismatch-actions .layer-action { width:100%; min-width:0; padding:0 7px; }
+        .size-mismatch-actions .layer-action.is-recommended { border-color:#4aa3df; background:#173b54; color:#fff; box-shadow:0 0 0 1px rgba(74,163,223,.18); }
+        .size-limit-warning { margin-top:6px; padding:7px 8px; border:1px solid #8f4d4d; border-radius:6px; background:#442727; color:#ffb3a7; font-size:11px; line-height:1.5; }
+        .size-limit-warning[hidden] { display:none; }
+        select.expert-field { height:32px; min-height:32px; padding:0 8px; }
+
+
+        /* 底部导航栏 */
+        .nav-bar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(45, 45, 48, 0.9); padding: 8px 20px; border-radius: 20px;
+            display: flex; gap: 15px; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .nav-btn { background: none; border: none; color: #fff; cursor: pointer; font-size: 18px; padding: 5px 10px; border-radius: 4px; }
+        .nav-btn:hover { background: rgba(255,255,255,0.1); }
+        .page-info { color: #ccc; font-size: 14px; min-width: 80px; text-align: center; font-variant-numeric: tabular-nums; }
+
+        /* 画布区域样式 */
+        .canvas-container { background: #524f4f}
+        
+        /* 翻页控制条 */
+        #page-nav {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(37, 37, 38, 0.9); padding: 8px 20px; border-radius: 20px;
+            display: flex; gap: 20px; align-items: center; color: white; z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5); border: 1px solid #444;
+        }
+        #page-nav button { background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; display: flex; align-items: center; padding: 0; }
+        #page-nav button:hover { color: #fff; }
+        #page-nav span { font-size: 14px; font-weight: bold; min-width: 60px; text-align: center; }
+        /* 隐藏 number input 的上下箭头以保持风格一致 */
+        #font-height-input::-webkit-outer-spin-button,
+        #font-height-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        #font-height-input {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        /* 空间设计 (roomspace) 视图 */
+        #roomspace-view { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; background: #1e2124; }
+        #roomspace-view[hidden] { display: none; }
+        #roomspace-view iframe { display: block; width: 100%; height: 100%; border: 0; background: #1e2124; }
+        body.roomspace-mode #sidebar { flex: 0 0 48px; width: 48px; min-width: 48px; max-width: 48px; padding: 0; }
+        body.roomspace-mode #sidebar > *:not(#imgedit-toolbar) { display: none !important; }
+        body.roomspace-mode #canvas-wrapper { display: none !important; }
+        body.roomspace-mode #roomspace-view { display: block; }
+
+        /* 主题切换按钮 */
+        .imgedit-theme-btn .theme-icon { display: none; }
+        body[data-theme="dark"] .imgedit-theme-btn .theme-icon-moon { display: block; }
+        body[data-theme="light"] .imgedit-theme-btn .theme-icon-sun { display: block; }
+
+        /* ---- 浅色主题（图片编辑） ---- */
+        body[data-theme="light"] { background-color:#f2f3f5; color:#1f2733; }
+        body[data-theme="light"] #sidebar { background:#f2f3f5; color:#333; border-right:1px solid #d4d8dd; }
+        body[data-theme="light"] #expert-panel { background:#f2f3f5; }
+        body[data-theme="light"] #expert-panel h3, body[data-theme="light"] #expert-panel h3 { color:#111827; border-bottom-color:#d4d8dd; }
+        body[data-theme="light"] .control-group { background:#ffffff; border-color:#dfe3e8; }
+        body[data-theme="light"] .control-label { color:#0d5e96; }
+        body[data-theme="light"] .hint-box { color:#6b7280; }
+        body[data-theme="light"] .expert-field { background:#ffffff; color:#1f2937; border-color:#c9d0d8; }
+        body[data-theme="light"] select.expert-field, body[data-theme="light"] .aspect-ratio-select, body[data-theme="light"] select { background:#ffffff; color:#1f2937; border-color:#c9d0d8; }
+        body[data-theme="light"] input[type="text"], body[data-theme="light"] input[type="number"], body[data-theme="light"] input[type="password"], body[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) { background:#ffffff; color:#1f2937; border-color:#c9d0d8; }
+        body[data-theme="light"] .custom-size-inputs input { background:#f3f4f6; color:#111; }
+        body[data-theme="light"] .sidebar-btn.secondary { background:#e8eaee; border-color:#c3c8cf; color:#2a3138; }
+        body[data-theme="light"] .sidebar-btn.secondary:hover { filter:none; background:#dde1e6; }
+        body[data-theme="light"] .size-option { background:#ffffff; border-color:#ccd2d9; color:#3a4149; }
+        body[data-theme="light"] .size-option:has(input:checked) { background:#d6e9f7; border-color:#4aa3df; color:#0d3b5c; }
+        body[data-theme="light"] .edit-scope-option { background:#ffffff; border-color:#ccd2d9; color:#3a4149; }
+        body[data-theme="light"] .edit-scope-option:has(input:checked) { background:#d6e9f7; border-color:#4aa3df; color:#0d3b5c; }
+        body[data-theme="light"] .reference-tile { border-color:#cfd5dc; background:#ffffff; }
+        body[data-theme="light"] .reference-add { border-color:#93a1af; color:#0d5e96; background:linear-gradient(145deg,#ffffff,#f0f2f5); }
+        body[data-theme="light"] .reference-add:hover { border-color:#4aa3df; color:#0d5e96; background:#e8f1f9; }
+        body[data-theme="light"] .reference-order-note { background:#eef4fa; color:#33445a; border-left-color:#4aa3df; }
+        body[data-theme="light"] #canvas-wrapper { background:#e3e7eb; }
+        body[data-theme="light"] #canvas-stage { background:#e8eaed; }
+        body[data-theme="light"] #generation-preview { background:linear-gradient(180deg,#f7f8fa,#eceff3); border-top-color:#d5d9df; box-shadow:0 -6px 18px rgba(50,60,70,.12); }
+        body[data-theme="light"] .preview-heading { color:#39424c; }
+        body[data-theme="light"] .preview-heading small { color:#8a939d; }
+        body[data-theme="light"] .generation-preview-empty { color:#9aa2ac; }
+        body[data-theme="light"] .generation-card { border-color:#cfd5dc; background:#ffffff; box-shadow:0 4px 12px rgba(30,40,50,.14); }
+        body[data-theme="light"] .generation-card img { background:#ffffff; }
+        body[data-theme="light"] .generation-kind { color:#333; background:rgba(255,255,255,.92); }
+        body[data-theme="light"] .generation-eye { border-color:rgba(0,0,0,.18); color:#555; background:rgba(255,255,255,.88); }
+        body[data-theme="light"] .save-choice-overlay { background:rgba(50,54,60,.4); }
+        body[data-theme="light"] .save-choice-panel { border-color:#d8dce1; background:#ffffff; color:#222831; box-shadow:0 18px 55px rgba(30,35,42,.28); }
+        body[data-theme="light"] .save-choice-title { color:#111827; }
+        body[data-theme="light"] .save-choice-note { color:#6b7280; }
+        body[data-theme="light"] .layer-action { background:#ffffff; border-color:#ccd2d9; color:#2a3138; }
+        body[data-theme="light"] .layer-action:hover { border-color:#6aafda; background:#f0f6fb; }
+        body[data-theme="light"] .layer-action.is-active { background:#0e639c; border-color:#0e639c; color:#fff; }
+        body[data-theme="light"] .layer-action.danger:hover { border-color:#d65f5f; background:#fbe9e9; }
+        body[data-theme="light"] .size-mismatch-values { background:#f5f0ea; border-color:#e0c9b0; color:#8a4a1f; }
+        body[data-theme="light"] .size-mismatch-recommendation { background:#eef4fa; border-left-color:#4aa3df; color:#33506b; }
+        body[data-theme="light"] .size-limit-warning { background:#fae9e5; border-color:#e0a6a0; color:#a34b3a; }
+        body[data-theme="light"] #preview-selection-toolbar { border-color:#d8dde2; background:rgba(255,255,255,.96); box-shadow:0 14px 40px rgba(30,40,50,.22); }
+        body[data-theme="light"] .annotation-color { box-shadow:0 0 0 1px rgba(0,0,0,.16); }
+        body[data-theme="light"] .annotation-color.is-active { border-color:#37474f; }
+        body[data-theme="light"] #color-picker-btn { background:#ffffff !important; border-color:#ccd2d9 !important; color:#333 !important; }
+        body[data-theme="light"] #color-swatch { border-color:#aaa; background:#e5e7eb; }
+        body[data-theme="light"] #hex-code { color:#333 !important; }
+        body[data-theme="light"] #roomspace-view { background:#dfe4df; }
+        body[data-theme="light"] #roomspace-view iframe { background:#dfe4df; }
+
+        /* Keep image_edit on roomspace's light palette. */
+        body[data-theme="light"] { background-color:#dfe4df; color:#203128; }
+        body[data-theme="light"] #sidebar { background:#eef1ec; color:#203128; border-right-color:rgba(25,44,35,.22); box-shadow:2px 0 8px rgba(40,57,48,.1); }
+        body[data-theme="light"] #expert-panel { background:#eef1ec; }
+        body[data-theme="light"] #expert-panel h3 { color:#213129; border-bottom-color:rgba(28,47,38,.14); }
+        body[data-theme="light"] .control-group { background:#f2f4f0; border-color:rgba(26,45,36,.18); }
+        body[data-theme="light"] .control-label { color:#1f5a45; }
+        body[data-theme="light"] .hint-box { color:#68756e; }
+        body[data-theme="light"] .key-tag { color:#f4f0e5; background:#1f5a45; }
+        body[data-theme="light"] .sidebar-btn { background:#1f5a45; }
+        body[data-theme="light"] .expert-field,
+        body[data-theme="light"] select.expert-field,
+        body[data-theme="light"] .aspect-ratio-select,
+        body[data-theme="light"] select,
+        body[data-theme="light"] input[type="text"],
+        body[data-theme="light"] input[type="number"],
+        body[data-theme="light"] input[type="password"],
+        body[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) { background:#fff; color:#203128; border-color:rgba(25,44,35,.24); }
+        body[data-theme="light"] .custom-size-inputs input { background:#fff; color:#203128; }
+        body[data-theme="light"] .sidebar-btn.secondary { background:#fff; border-color:rgba(25,44,35,.25); color:#203128; }
+        body[data-theme="light"] .sidebar-btn.secondary:hover { filter:none; color:#1f5a45; border-color:#1f5a45; background:#f7f8f5; }
+        body[data-theme="light"] .size-option,
+        body[data-theme="light"] .edit-scope-option { background:#fff; border-color:rgba(25,44,35,.24); color:#203128; }
+        body[data-theme="light"] .size-option:has(input:checked),
+        body[data-theme="light"] .edit-scope-option:has(input:checked) { background:#1f5a45; border-color:#1f5a45; color:#fff; }
+        body[data-theme="light"] .reference-tile { border-color:rgba(25,44,35,.22); background:#f2f4f0; }
+        body[data-theme="light"] .reference-add { border-color:#77857d; color:#1f5a45; background:#f7f8f5; }
+        body[data-theme="light"] .reference-add:hover { border-color:#1f5a45; color:#1f5a45; background:rgba(31,90,69,.06); }
+        body[data-theme="light"] .reference-order-note { background:rgba(31,90,69,.065); color:#526159; border-left-color:#1f5a45; }
+        body[data-theme="light"] #canvas-wrapper,
+        body[data-theme="light"] #canvas-stage,
+        body[data-theme="light"] .canvas-container { background:#dfe4df; }
+        body[data-theme="light"] #generation-preview { background:#eef1ec; border-top-color:rgba(25,44,35,.18); box-shadow:0 -6px 18px rgba(40,57,48,.1); }
+        body[data-theme="light"] .preview-heading { color:#38483f; }
+        body[data-theme="light"] .preview-heading small,
+        body[data-theme="light"] .generation-preview-empty { color:#77827c; }
+        body[data-theme="light"] .generation-card { border-color:rgba(25,44,35,.22); background:#dfe4df; box-shadow:0 4px 12px rgba(40,57,48,.12); }
+        body[data-theme="light"] .generation-card.is-selected { border-color:#1f5a45; box-shadow:0 0 0 2px rgba(31,90,69,.22),0 5px 16px rgba(40,57,48,.14); }
+        body[data-theme="light"] .generation-card.is-main::before { background:#1f5a45; }
+        body[data-theme="light"] .generation-card img { background:#dfe4df; }
+        body[data-theme="light"] .generation-kind { color:#203128; background:rgba(242,244,240,.94); }
+        body[data-theme="light"] .generation-eye { border-color:rgba(25,44,35,.2); color:#38483f; background:rgba(242,244,240,.92); }
+        body[data-theme="light"] .save-choice-overlay { background:rgba(20,29,24,.42); }
+        body[data-theme="light"] .save-choice-panel { border-color:rgba(25,44,35,.24); background:#eef1ec; color:#203128; box-shadow:0 18px 55px rgba(20,31,25,.28); }
+        body[data-theme="light"] .save-choice-title { color:#213129; }
+        body[data-theme="light"] .save-choice-note { color:#68756e; }
+        body[data-theme="light"] .layer-action { background:#fff; border-color:rgba(25,44,35,.25); color:#203128; }
+        body[data-theme="light"] .layer-action:hover { border-color:#1f5a45; background:rgba(31,90,69,.055); }
+        body[data-theme="light"] .layer-action.is-active { background:#1f5a45; border-color:#1f5a45; color:#fff; }
+        body[data-theme="light"] .layer-action.danger:hover { border-color:#a34d32; background:rgba(163,77,50,.08); }
+        body[data-theme="light"] .size-mismatch-values { background:#f4f0e5; border-color:#d9c8b6; color:#71321f; }
+        body[data-theme="light"] .size-mismatch-recommendation { background:rgba(31,90,69,.065); border-left-color:#1f5a45; color:#38483f; }
+        body[data-theme="light"] .size-limit-warning { background:rgba(163,77,50,.08); border-color:rgba(163,77,50,.42); color:#71321f; }
+        body[data-theme="light"] #preview-selection-toolbar { border-color:rgba(25,44,35,.22); background:rgba(242,244,240,.96); box-shadow:0 14px 40px rgba(20,31,25,.22); }
+        body[data-theme="light"] #color-picker-btn,
+        body[data-theme="light"] #paint-bucket-btn { background:#fff !important; border-color:rgba(25,44,35,.25) !important; color:#203128 !important; }
+        body[data-theme="light"] #color-swatch { border-color:#77827c; background:#dfe4df; }
+        body[data-theme="light"] #hex-code { color:#203128 !important; }
+    </style>
+    <!-- 引入 Fabric.js -->
+    <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
+</head>
+<body>
+
+<div id="sidebar">
+    <div id="imgedit-toolbar" aria-label="tools">
+        <div class="imgedit-nav-item active" data-view="roomspace" role="button" tabindex="0" onclick="focusRoomspace()" title="空间设计">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2.5 20 6.5v11L12 21.5 4 17.5v-11l8-4ZM6.2 8.1 12 11.2l5.8-3.1-1.4-.7L12 9.6 7.6 7.4l-1.4.7Zm5.05 12.35V12.9l-6-3.2v6.6l6 3.15Zm1.5 0 6-3.15V9.7l-6 3.2v7.55Z" />
+            </svg>
+        </div>
+        <div class="imgedit-nav-item" data-view="image" role="button" tabindex="0" onclick="focusImageAdjust()" title="图片调整">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.731 2.269a2.625 2.625 0 0 0-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 0 0 0-3.712ZM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 0 0-1.32 2.214l-.8 2.685a.75.75 0 0 0 .933.933l2.685-.8a5.25 5.25 0 0 0 2.214-1.32l8.4-8.4Z" />
+                <path d="M5.25 5.25a3 3 0 0 0-3 3v10.5a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3V13.5a.75.75 0 0 0-1.5 0v5.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V8.25a1.5 1.5 0 0 1 1.5-1.5h5.25a.75.75 0 0 0 0-1.5H5.25Z" />
+            </svg>
+        </div>
+        <div class="imgedit-nav-item imgedit-theme-btn" data-view="theme" role="button" tabindex="0" onclick="toggleTheme()" title="切换主题">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12ZM11 1h2v3h-2V1Zm0 19h2v3h-2v-3ZM1 11h3v2H1v-2Zm19 0h3v2h-3v-2ZM4.22 2.81l1.42 1.42-1.41 1.42L2.8 4.22l1.42-1.41Zm12.73 12.73 1.42 1.42-1.41 1.41-1.42-1.41 1.41-1.42ZM2.81 19.78l1.42-1.41 1.41 1.42-1.42 1.41-1.41-1.42Zm14.14-14.14 1.41-1.41 1.42 1.41-1.41 1.42-1.42-1.42Z"/>
+            </svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75 9.75 9.75 0 0 1 8.25 6c0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25 9.75 9.75 0 0 0 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>
+            </svg>
+        </div>
+        <div class="imgedit-nav-item" data-view="help" role="button" tabindex="0" onclick="showHelp()" title="使用帮助">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.776-1.272 5.23 0 1.513 1.324 1.513 3.518 0 4.842a3.75 3.75 0 0 1-.837.552c-.676.328-1.028.774-1.028 1.152v.75a.75.75 0 0 1-1.5 0v-.75c0-1.279 1.06-2.107 1.875-2.502.182-.088.351-.199.503-.331.83-.727.83-1.857 0-2.584ZM12 18a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd" />
+            </svg>
+        </div>
+    </div>
+    <h3>PPT 精细化调整</h3>
+
+    <!-- 0. 打开文件 -->
+    <div class="control-group" style="padding: 8px;">
+        <div style="display:flex; gap:8px;">
+            <button class="sidebar-btn" style="flex:1;" onclick="openFile()">📂 打开 PPTX</button>
+            <button class="sidebar-btn" style="flex:1;" onclick="saveData()">💾 保存</button>
+        </div>
+        <!-- 【新增位置 1】: 保存选项复选框 -->
+        <div style="margin-top: 10px; padding-top: 5px; border-top: 1px solid #444;">
+            <label style="cursor:pointer; display:flex; align-items:center; font-size:12px; color:#ccc;">
+                <input type="checkbox" id="save-opaque-check" checked style="margin-right:6px;">
+                保存时强制蒙版不透明 (纯色)
+            </label>
+        </div>
+        <!-- 新增结束 -->
+
+    </div>
+
+    <!-- 新增：新建对象工具 (布局优化版) -->
+    <div class="control-group">
+        <label class="control-label">新建对象</label>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">
+            <!-- 按钮占据左侧 -->
+            <button id="create-obj-btn" class="sidebar-btn" style="flex:1; padding:6px 2px; font-size:12px; white-space:nowrap; overflow:hidden;" onclick="toggleCreateMode()">
+                ➕ 新增文本
+            </button>
+            <!-- 选项占据右侧 -->
+            <div id="shape-choices" class="radio-group" style="display:flex; gap:8px; align-items:center;">
+                <label style="margin:0; cursor:pointer; display:flex; align-items:center;"><input type="radio" name="new-shape-type" value="rect" checked> 矩形</label>
+                <label style="margin:0; cursor:pointer; display:flex; align-items:center;"><input type="radio" name="new-shape-type" value="circle"> 圆形</label>
+            </div>
+        </div>
+        <!-- 提示文本独立一行 -->
+        <div id="create-hint" class="hint-box" style="margin-top:2px; color:#888;">
+            点击按钮开始绘制，再次点击取消
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+            <button id="advanced-mask-btn" class="sidebar-btn secondary" style="flex:1;" onclick="toggleAdvancedMaskMode()">高级蒙版</button>
+            <button id="expert-mode-btn" class="sidebar-btn secondary" style="width:70px;" onclick="enterExpertMode()">专家</button>
+        </div>
+        <div class="hint-box">同一框内可包含多行或多个文字对象；生成时框选区域会原位呼吸</div>
+    </div>
+    
+    <!-- 1. 透明度控制 -->
+    <div class="control-group">
+        <label class="control-label">蒙版透明度: <span id="opacity-val">80%</span></label>
+        <input type="range" id="opacity-slider" min="0" max="100" value="80">
+        <div class="hint-box">调节以对比底层图片文字与上层文字</div>
+    </div>
+
+    <!-- 2. 编辑模式 & 显示控制 -->
+    <div class="control-group">
+        <label class="control-label">编辑模式</label>
+        <div class="radio-group">
+            <label><input type="radio" name="mode" value="text" checked> 仅编辑文本 (Text)</label>
+            <label><input type="radio" name="mode" value="mask"> 仅编辑蒙版 (Mask)</label>
+        </div>
+        <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+            <label style="cursor:pointer; font-size:13px; display:block;">
+                <input type="checkbox" id="toggle-text" checked> 显示所有文本
+            </label>
+            <label style="cursor:pointer; font-size:13px; display:block; margin-top:8px;">
+                <input type="checkbox" id="toggle-advanced-mask" checked> 显示高级蒙版
+            </label>
+        </div>
+    </div>
+
+    <!-- 3. 吸管工具 & 填充工具 -->
+    <div class="control-group">
+        <label class="control-label">颜色工具</label>
+        <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+    <!-- 颜色显示器 - 点击吸取颜色（含吸管图标） -->
+    <button id="color-picker-btn" style="display: flex; align-items: center; gap: 8px; flex: 1; height: 44px; padding: 10px; background: #3e3e42; border: 2px solid #555; border-radius: 4px; color: #ccc; cursor: pointer; font-size: 13px; transition: all 0.2s;" title="点击吸取颜色">
+                <div id="color-swatch" style="width: 24px; height: 24px; border: 2px solid #888; border-radius: 3px; background: #333; flex-shrink: 0;"></div>
+                <span id="hex-code" style="font-size: 12px; flex: 1; text-align: left;">点击吸取</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#9cdcfe" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; opacity:0.9">
+                    <path fill-rule="evenodd" d="M16.098 2.598a3.75 3.75 0 1 1 3.622 6.275l-1.72.46V12a.75.75 0 0 1-.22.53l-.75.75a.75.75 0 0 1-1.06 0l-.97-.97-7.94 7.94a2.56 2.56 0 0 1-1.81.75 1.06 1.06 0 0 0-.75.31l-.97.97a.75.75 0 0 1-1.06 0l-.75-.75a.75.75 0 0 1 0-1.06l.97-.97a1.06 1.06 0 0 0 .31-.75c0-.68.27-1.33.75-1.81L11.69 9l-.97-.97a.75.75 0 0 1 0-1.06l.75-.75A.75.75 0 0 1 12 6h2.666l.461-1.72c.165-.617.49-1.2.971-1.682Zm-3.348 7.463L4.81 18a1.06 1.06 0 0 0-.31.75c0 .318-.06.63-.172.922a2.56 2.56 0 0 1 .922-.172c.281 0 .551-.112.75-.31l7.94-7.94-1.19-1.19Z" clip-rule="evenodd" />
+                </svg>
+            </button>
+
+            <!-- 漆桶按钮 - 切换填充模式（持久开关） -->
+            <button id="paint-bucket-btn" style="width: 44px; height: 44px; padding: 0; background: #3e3e42; border: 2px solid #555; border-radius: 4px; color: #ccc; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" title="切换填充模式">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#9cdcfe" xmlns="http://www.w3.org/2000/svg" style="opacity:0.95">
+                    <path fill-rule="evenodd" d="M20.599 1.5c-.376 0-.743.111-1.055.32l-5.08 3.385a18.747 18.747 0 0 0-3.471 2.987 10.04 10.04 0 0 1 4.815 4.815 18.748 18.748 0 0 0 2.987-3.472l3.386-5.079A1.902 1.902 0 0 0 20.599 1.5Zm-8.3 14.025a18.76 18.76 0 0 0 1.896-1.207 8.026 8.026 0 0 0-4.513-4.513A18.75 18.75 0 0 0 8.475 11.7l-.278.5a5.26 5.26 0 0 1 3.601 3.602l.502-.278ZM6.75 13.5A3.75 3.75 0 0 0 3 17.25a1.5 1.5 0 0 1-1.601 1.497.75.75 0 0 0-.7 1.123 5.25 5.25 0 0 0 9.8-2.62 3.75 3.75 0 0 0-3.75-3.75Z" clip-rule="evenodd" />
+                </svg>
+            </button>
+            <!-- 位置微调按钮已移除（使用键盘箭头移动或鼠标操作） -->
+        </div>
+        <div class="hint-box" style="margin-top: 10px;">
+            <strong>吸管:</strong> 点击颜色框后在画布吸取颜色（移动或点击均可）<br>
+            <strong>填充:</strong> 点击漆桶按钮切换填充模式（会高亮），再次点击可关闭，然后点击蒙版进行填充
+        </div>
+    
+    <!-- 字高工具卡片 -->
+    <div id="font-control-group" class="control-group" style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+        <label class="control-label" style="margin:0; width:56px;">字高</label>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <input id="font-height-input" type="number" min="1" step="1" style="width:80px; padding:6px; background:#222; color:#fff; border:1px solid #444; border-radius:4px;" />
+            <button id="font-decrease" style="width:28px;height:28px;background:#3e3e42;border:1px solid #555;border-radius:4px;color:#ccc;">-</button>
+            <button id="font-increase" style="width:28px;height:28px;background:#3e3e42;border:1px solid #555;border-radius:4px;color:#ccc;">+</button>
+        </div>
+    </div>
+    </div>
+    <div class="hint-box" style="margin-top:0;">
+        <span class="control-label">快捷键:</span>
+        • <span class="key-tag">Ctrl</span> + <span class="key-tag">Click</span> 多选/移动<br>
+    </div>
+
+    <!-- 保存按钮已移至顶部并排显示 -->
+
+    <section id="expert-panel" style="display:none; width:100%; box-sizing:border-box;">
+        <div style="margin-bottom:12px;">
+            <h3 style="margin:0 0 10px 0;">图片编辑</h3>
+            <div style="display:flex; gap:6px;">
+                <button class="sidebar-btn" style="flex:1;" onclick="openImageFile()" title="打开图片">打开图片</button>
+                <button class="sidebar-btn secondary" style="flex:1;" onclick="openSaveChoiceDialog()" title="选择要保存的图片内容">保存图片</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label class="control-label">LLM 模型</label>
+            <div style="display:flex; gap:6px;">
+                <select id="expert-model" class="expert-field" style="min-width:0;"></select>
+                <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(false)" title="添加模型">+</button>
+                <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(true)" title="修改当前模型" aria-label="修改当前模型">&#9998;</button>
+                <button class="sidebar-btn secondary expert-icon-btn" onclick="removeExpertModel()" title="删除当前模型">&#8722;</button>
+            </div>
+            <div id="expert-model-form" style="display:none; margin-top:8px;">
+                <input id="expert-model-name" class="expert-field" placeholder="模型名称" style="margin-bottom:6px;">
+                <input id="expert-provider" class="expert-field" placeholder="服务商名称" style="margin-bottom:6px;">
+                <input id="expert-baseurl" class="expert-field" placeholder="Base URL" style="margin-bottom:6px;">
+                <input id="expert-key" class="expert-field" type="password" placeholder="API Key（修改时留空保持原值）" style="margin-bottom:6px;">
+                <button id="expert-model-save" class="sidebar-btn" style="width:100%;" onclick="saveExpertModel()">保存模型</button>
+            </div>
+        </div>
+        <div class="control-group" style="margin-top:10px;">
+            <label class="control-label">编辑方式</label>
+            <div class="edit-scope-switch">
+                <label class="edit-scope-option"><input type="radio" name="expert-edit-scope" value="full" checked onchange="updateExpertEditScope()"> 整张修改</label>
+                <label class="edit-scope-option"><input type="radio" name="expert-edit-scope" value="local" onchange="updateExpertEditScope()"> 局部修改</label>
+            </div>
+            <label class="control-label">修改描述</label>
+            <textarea id="expert-prompt" class="expert-field" rows="7" placeholder="描述要修改或生成的画面"></textarea>
+            <label class="control-label" style="margin-top:10px; margin-bottom:0;">参考图片</label>
+            <div id="expert-reference-grid" class="reference-grid"></div>
+            <div class="reference-order-note">提交顺序：当前主图为第 1 张，下面添加的参考图依次作为第 2、3、4…张。</div>
+            <input id="expert-reference-input" type="file" accept="image/*" hidden onchange="handleReferenceImage(event)">
+        </div>
+        <div class="control-group" style="margin-top:10px;">
+            <label class="control-label">修改范围</label>
+            <div id="local-edit-controls">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">
+                <label class="sidebar-btn secondary" style="padding:6px;text-align:center;cursor:pointer;"><input type="radio" name="expert-selection-mode" value="rect" checked onchange="updateExpertSelectionMode()"> 框选</label>
+                <label class="sidebar-btn secondary" style="padding:6px;text-align:center;cursor:pointer;"><input type="radio" name="expert-selection-mode" value="brush" onchange="updateExpertSelectionMode()"> 涂抹</label>
+            </div>
+            <div id="expert-brush-size-row" style="display:none;margin-bottom:8px;">
+                <label class="control-label">画笔大小：<span id="expert-brush-size-value">32</span></label>
+                <input id="expert-brush-size" type="range" min="4" max="160" value="32" style="width:100%;" oninput="updateExpertBrushSize(this.value)">
+            </div>
+            <button id="expert-select-region" class="sidebar-btn secondary" style="width:100%;" onclick="startExpertSelection()">绘制蒙版</button>
+            </div>
+            <div id="expert-scope-status" class="hint-box">整张修改：蒙版自动与主图尺寸一致</div>
+            <label class="control-label" style="margin-top:11px; margin-bottom:5px;">生成尺寸</label>
+            <div class="size-options">
+                <label class="size-option custom-size-option">
+                    <input type="radio" name="expert-output-size" value="custom" checked>
+                    <span class="custom-size-inputs"><input id="expert-output-width" type="number" min="64" max="4096" value="1024"><span>×</span><input id="expert-output-height" type="number" min="64" max="4096" value="1024"></span>
+                </label>
+                <label class="size-option preset-size-option"><input type="radio" name="expert-output-size" value="1k">1K</label>
+                <label class="size-option preset-size-option"><input type="radio" name="expert-output-size" value="2k">2K</label>
+                <select id="expert-aspect-ratio" class="aspect-ratio-select" title="1K / 2K 生成宽高比">
+                    <option value="auto">原图比例</option>
+                    <option value="1:1">1:1</option>
+                    <option value="4:3">4:3</option>
+                    <option value="3:4">3:4</option>
+                    <option value="3:2">3:2</option>
+                    <option value="2:3">2:3</option>
+                    <option value="16:9">16:9</option>
+                    <option value="9:16">9:16</option>
+                    <option value="21:9">21:9</option>
+                </select>
+            </div>
+            <div id="expert-size-hint" class="hint-box">整图生成时生效；1K / 2K 配合右侧宽高比</div>
+            <div id="expert-size-warning" class="size-limit-warning" hidden></div>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:9px; font-size:12px; cursor:pointer;">
+                <input id="expert-toggle-advanced-mask" type="checkbox" checked> 显示高级蒙版
+            </label>
+        </div>
+        <button id="expert-submit" class="sidebar-btn" style="width:100%; margin-top:10px;" onclick="submitExpertEdit()">生成图片</button>
+        <div id="expert-status" class="hint-box" style="min-height:18px;"></div>
+    </section>
+</div>
+
+<div id="canvas-wrapper">
+    <div id="canvas-stage">
+        <canvas id="c"></canvas>
+        <div id="page-nav">
+            <button onclick="changePage(-1)" title="上一页">◀</button>
+            <span id="page-info">1 / 1</span>
+            <button onclick="changePage(1)" title="下一页">▶</button>
+        </div>
+    </div>
+    <div id="preview-selection-toolbar" hidden>
+        <div class="annotation-colors" id="annotation-colors">
+            <button class="annotation-color" style="background:#000000" data-color="#000000" onclick="setAnnotationColor('#000000')"></button>
+            <button class="annotation-color is-active" style="background:#ff5252" data-color="#ff5252" onclick="setAnnotationColor('#ff5252')"></button>
+            <button class="annotation-color" style="background:#ffc400" data-color="#ffc400" onclick="setAnnotationColor('#ffc400')"></button>
+            <button class="annotation-color" style="background:#00d986" data-color="#00d986" onclick="setAnnotationColor('#00d986')"></button>
+            <button class="annotation-color" style="background:#11b5d1" data-color="#11b5d1" onclick="setAnnotationColor('#11b5d1')"></button>
+            <button class="annotation-color" style="background:#d238ed" data-color="#d238ed" onclick="setAnnotationColor('#d238ed')"></button>
+            <button class="annotation-color" style="background:#c7c7c7" data-color="#c7c7c7" onclick="setAnnotationColor('#c7c7c7')"></button>
+        </div>
+        <div class="layer-actions">
+            <button class="layer-action danger" onclick="deleteSelectedPreviewLayer()">删除</button>
+            <button class="layer-action" onclick="setSelectedLayerAsMain()">置为主图</button>
+            <button id="annotation-brush-button" class="layer-action annotation-action" onclick="startAnnotationBrush()">✎ 画笔</button>
+            <button id="annotation-text-button" class="layer-action annotation-action" onclick="addAnnotationText()">T 文字</button>
+            <button id="annotation-marker-button" class="layer-action annotation-action" onclick="toggleAnnotationMarker()">● 标记</button>
+            <button class="layer-action" onclick="openSaveChoiceDialog()">保存</button>
+        </div>
+    </div>
+    <div id="save-choice-dialog" class="save-choice-overlay" hidden onclick="handleSaveChoiceBackdrop(event)">
+        <div class="save-choice-panel">
+            <h4 class="save-choice-title">保存图片</h4>
+            <p class="save-choice-note">选择保存预览栏当前选中的单张图片，或保存画布上目前可见图层的融合结果。</p>
+            <div class="save-choice-actions">
+                <button class="layer-action" onclick="saveImageFile('selected')">保存选中图片</button>
+                <button class="layer-action" onclick="saveImageFile('visible')">保存可见融合图</button>
+                <button class="layer-action save-choice-cancel" onclick="closeSaveChoiceDialog()">取消</button>
+            </div>
+        </div>
+    </div>
+    <div id="size-mismatch-dialog" class="save-choice-overlay" hidden>
+        <div class="save-choice-panel size-mismatch-panel">
+            <h4 class="save-choice-title">返回尺寸与要求不一致</h4>
+            <p class="save-choice-note">中转站返回了可用图片，但像素尺寸没有按照请求生成。请选择本次结果的处理方式。</p>
+            <div id="size-mismatch-values" class="size-mismatch-values"></div>
+            <div id="size-mismatch-recommendation" class="size-mismatch-recommendation"></div>
+            <div class="size-mismatch-actions">
+                <button id="size-mismatch-actual" class="layer-action" onclick="resolveSizeMismatchChoice('actual')">使用返回尺寸</button>
+                <button id="size-mismatch-resize" class="layer-action" onclick="resolveSizeMismatchChoice('resize')">强制缩放一致</button>
+                <button id="size-mismatch-abandon" class="layer-action" onclick="resolveSizeMismatchChoice('abandon')">放弃</button>
+            </div>
+        </div>
+    </div>
+    <div id="generation-preview">
+        <div class="preview-heading">生成预览</div>
+        <div id="generation-preview-items"><span class="generation-preview-empty">生成结果会依次出现在这里</span></div>
+    </div>
+</div>
+
+<div id="roomspace-view" hidden>
+    <iframe id="roomspace-frame" title="空间设计"></iframe>
+</div>
+
+<script>
+    let canvas;
+    let currentOpacity = 0.8;
+    let pickedColor = null;
+    let isPickingColor = false;  // 取色模式
+    let isPaintBucketMode = false; // 填充模式
+    let clipboard = null;
+    let toolEventsBound = false; // 防止重复绑定事件
+    let selectedObjectsCache = []; // 缓存当前选中的对象，供 dblclick 使用
+    let preMouseDownSelection = []; // 点击前的选区快照，用于 dblclick 决定是否使用多选
+    let historyMap = {}; // per-page history: { [pageNum]: {undo:[], redo:[]} }
+    let isRestoringHistory = false; // 防止在恢复历史时再次入栈
+    let currentPageGlobal = 1;
+    let loadingPageNumber = null;  // 🔧 新增：追踪正在加载的页面编号
+    // --- 新增变量 ---
+    let isCreatingObject = false; // 是否处于新建对象模式
+    let drawingObject = null;     // 当前正在绘制的对象
+    let isCreatingAdvancedMask = false;
+    let expertMode = false;
+    let expertSelecting = false;
+    let expertGuide = null;
+    let expertRectGuides = [];
+    let expertBrushPaths = [];
+    let expertSelectionActive = false;
+    let expertGeneratingGuides = [];
+    let expertBusy = false;
+    let expertJobId = null;
+    let advancedMaskJobId = 0;
+    const advancedMaskJobs = new Map();
+    const expertReferenceImages = [];
+    const generationPreviewObjects = new Map();
+    let selectedPreviewId = null;
+    let annotationColor = '#ff5252';
+    let annotationMode = null;
+    let sizeMismatchResolver = null;
+    let annotationMarkerNumber = 1;
+    const annotationPreviewId = 'annotation-layer';
+    let drawStartX = 0;           // 绘制起始X
+    let drawStartY = 0;           // 绘制起始Y
+
+    function renderReferenceGrid() {
+        const grid = document.getElementById('expert-reference-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        expertReferenceImages.forEach((source, index) => {
+            const tile = document.createElement('div');
+            tile.className = 'reference-tile';
+            const image = document.createElement('img');
+            image.src = source;
+            image.alt = `参考图 ${index + 1}`;
+            const remove = document.createElement('button');
+            remove.className = 'reference-remove';
+            remove.type = 'button';
+            remove.title = '移除参考图';
+            remove.innerText = '×';
+            remove.onclick = () => { expertReferenceImages.splice(index, 1); renderReferenceGrid(); };
+            tile.append(image, remove);
+            grid.appendChild(tile);
+        });
+        const add = document.createElement('button');
+        add.className = 'reference-add';
+        add.type = 'button';
+        add.title = '添加参考图';
+        add.innerText = '+';
+        add.onclick = () => document.getElementById('expert-reference-input').click();
+        grid.appendChild(add);
+    }
+
+    renderReferenceGrid();
+
+    function handleReferenceImage(event) {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => { expertReferenceImages.push(reader.result); renderReferenceGrid(); };
+        reader.onerror = () => setExpertStatus('参考图读取失败', '#f48771');
+        reader.readAsDataURL(file);
+    }
+
+    function isGeminiImageModel(model) {
+        return String(model || '').toLowerCase().includes('gemini');
+    }
+
+    function isGptImage2Model(model) {
+        return String(model || '').toLowerCase().includes('gpt-image-2');
+    }
+
+    function parseAspectRatio(value) {
+        const parts = String(value || '').split(':').map(Number);
+        return parts.length === 2 && parts[0] > 0 && parts[1] > 0 ? parts[0] / parts[1] : null;
+    }
+
+    function resolveExpertAspectRatio() {
+        const selected = document.getElementById('expert-aspect-ratio')?.value || 'auto';
+        if (selected !== 'auto') return selected;
+        const sourceRatio = (canvas?.originalWidth || 1) / (canvas?.originalHeight || 1);
+        const supported = ['1:1','4:3','3:4','3:2','2:3','16:9','9:16','21:9'];
+        return supported.reduce((best, current) =>
+            Math.abs(parseAspectRatio(current) - sourceRatio) < Math.abs(parseAspectRatio(best) - sourceRatio) ? current : best
+        , supported[0]);
+    }
+
+    function presetPixelSize(mode, aspectRatio) {
+        const longest = mode === '2k' ? 2048 : 1024;
+        const ratio = parseAspectRatio(aspectRatio) || ((canvas?.originalWidth || 1) / (canvas?.originalHeight || 1));
+        const requested = ratio >= 1
+            ? {width:longest, height:Math.max(64, Math.round(longest / ratio))}
+            : {width:Math.max(64, Math.round(longest * ratio)), height:longest};
+        return fitGptOutputSize(requested.width, requested.height);
+    }
+
+    function fitGptOutputSize(width, height) {
+        const align = value => Math.max(16, Math.min(4096, Math.round(Number(value) / 16) * 16));
+        let fittedWidth = align(width);
+        let fittedHeight = align(height);
+        if (fittedWidth > fittedHeight * 3) fittedHeight = align(Math.ceil(fittedWidth / 3 / 16) * 16);
+        if (fittedHeight > fittedWidth * 3) fittedWidth = align(Math.ceil(fittedHeight / 3 / 16) * 16);
+        return {width:fittedWidth, height:fittedHeight};
+    }
+
+    function geminiPresetPixelSize(imageSize, aspectRatio) {
+        const oneK = {
+            '1:1':[1024,1024], '2:3':[848,1264], '3:2':[1264,848], '3:4':[896,1200],
+            '4:3':[1200,896], '9:16':[768,1376], '16:9':[1376,768], '21:9':[1584,672]
+        };
+        const base = oneK[aspectRatio] || oneK['1:1'];
+        const multiplier = imageSize === '2K' ? 2 : 1;
+        return {width:base[0] * multiplier, height:base[1] * multiplier};
+    }
+
+    function getExpertGenerationOptions(model) {
+        const mode = document.querySelector('input[name="expert-output-size"]:checked')?.value || 'custom';
+        const selectedAspectRatio = document.getElementById('expert-aspect-ratio')?.value || 'auto';
+        const aspectRatio = resolveExpertAspectRatio();
+        if (isGeminiImageModel(model)) {
+            const imageSize = mode === '2k' ? '2K' : '1K';
+            return {...geminiPresetPixelSize(imageSize, aspectRatio), imageSize, aspectRatio};
+        }
+        if (mode === 'custom') {
+            const width = Number(document.getElementById('expert-output-width').value) || canvas.originalWidth;
+            const height = Number(document.getElementById('expert-output-height').value) || canvas.originalHeight;
+            return {...fitGptOutputSize(width, height), imageSize:null, aspectRatio:null};
+        }
+        return {...presetPixelSize(mode, selectedAspectRatio), imageSize:null, aspectRatio:null};
+    }
+
+    function updateExpertSizeWarning(model=document.getElementById('expert-model')?.value) {
+        const warning = document.getElementById('expert-size-warning');
+        if (!warning || !canvas || !isGptImage2Model(model)) {
+            if (warning) warning.hidden = true;
+            return false;
+        }
+        const options = getExpertGenerationOptions(model);
+        const longest = Math.max(Number(options.width) || 0, Number(options.height) || 0);
+        if (longest <= 2048) {
+            warning.hidden = true;
+            return false;
+        }
+        warning.innerText = `警告：GPT Image 2 当前设置尺寸为 ${options.width}×${options.height}，长边超过 2048。部分中转接口可能在 2K 以外出现异常生成，建议改为 2048 以内。`;
+        warning.hidden = false;
+        return true;
+    }
+
+    function updateOutputSizeControlsForModel(model) {
+        const gemini = isGeminiImageModel(model);
+        const customLabel = document.querySelector('.custom-size-option');
+        const customRadio = customLabel?.querySelector('input[type="radio"]');
+        customLabel?.classList.toggle('is-disabled', gemini);
+        document.querySelectorAll('.custom-size-inputs input').forEach(input => input.disabled = gemini);
+        if (gemini && customRadio?.checked) {
+            const preset = document.querySelector('input[name="expert-output-size"][value="1k"]');
+            if (preset) preset.checked = true;
+        }
+        const hint = document.getElementById('expert-size-hint');
+        if (hint) hint.innerText = gemini
+            ? 'Gemini 使用 1K / 2K 与宽高比；自定义像素尺寸不可用'
+            : 'GPT 模型会自动对齐到最接近的 16 倍数尺寸；1K / 2K 配合右侧宽高比';
+        updateExpertSizeWarning(model);
+    }
+
+    function previewEntryObjects(entry) {
+        return (entry?.objects || []).filter(object => object?.canvas === canvas);
+    }
+
+    function resetGenerationPreviews() {
+        generationPreviewObjects.clear();
+        selectedPreviewId = null;
+        annotationMode = null;
+        annotationMarkerNumber = 1;
+        updateAnnotationMarkerButton();
+        const toolbar = document.getElementById('preview-selection-toolbar');
+        if (toolbar) toolbar.hidden = true;
+        const items = document.getElementById('generation-preview-items');
+        if (items) items.innerHTML = '<span class="generation-preview-empty">打开图片后，主图和生成图层会出现在这里</span>';
+    }
+
+    function syncGenerationPreviewVisibility() {
+        generationPreviewObjects.forEach(entry => {
+            const objects = previewEntryObjects(entry);
+            const visible = objects.length > 0 && objects.every(object => object.visible);
+            entry.button.classList.toggle('is-hidden', !visible);
+            entry.button.innerText = visible ? '👁' : '◌';
+            entry.button.title = visible ? '隐藏此图层' : '显示此图层';
+            entry.card.classList.toggle('is-main', Boolean(entry.isMain));
+            entry.card.classList.toggle('is-selected', entry.previewId === selectedPreviewId);
+        });
+    }
+
+    function toggleGenerationPreview(previewId) {
+        const entry = generationPreviewObjects.get(previewId);
+        const objects = previewEntryObjects(entry);
+        if (!objects.length) return;
+        const shouldShow = !objects.every(object => object.visible);
+        objects.forEach(object => {
+            object.data.previewVisible = shouldShow;
+            object.set('visible', shouldShow);
+        });
+        syncGenerationPreviewVisibility();
+        canvas.requestRenderAll();
+    }
+
+    function selectGenerationPreview(previewId) {
+        stopAnnotationMode();
+        const entry = generationPreviewObjects.get(previewId);
+        const objects = previewEntryObjects(entry);
+        if (!entry || !objects.length) return;
+        selectedPreviewId = previewId;
+        canvas.discardActiveObject();
+        if (objects.length === 1) {
+            objects[0].set({selectable:true,evented:true});
+            canvas.setActiveObject(objects[0]);
+        } else {
+            const selection = new fabric.ActiveSelection(objects, {canvas});
+            canvas.setActiveObject(selection);
+        }
+        document.getElementById('preview-selection-toolbar').hidden = false;
+        syncGenerationPreviewVisibility();
+        canvas.requestRenderAll();
+    }
+
+    function addGenerationPreview(result, objectOrObjects, isFullImage, options={}) {
+        const objects = Array.isArray(objectOrObjects) ? objectOrObjects : [objectOrObjects];
+        const items = document.getElementById('generation-preview-items');
+        items.querySelector('.generation-preview-empty')?.remove();
+        const previewId = options.previewId || `preview-${result.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const existing = generationPreviewObjects.get(previewId);
+        if (existing) {
+            existing.objects = objects;
+            existing.thumbnail.src = result.imageData;
+            existing.kind.innerText = options.label || existing.kind.innerText;
+            existing.isSelectionMask = Boolean(options.isSelectionMask || existing.isSelectionMask);
+            objects.forEach(object => { object.data.previewId = previewId; });
+            syncGenerationPreviewVisibility();
+            return existing;
+        }
+        objects.forEach(object => {
+            object.data.previewId = previewId;
+            object.data.previewVisible = object.visible !== false;
+        });
+        const card = document.createElement('div');
+        card.className = 'generation-card';
+        card.onclick = () => selectGenerationPreview(previewId);
+        const thumbnail = document.createElement('img');
+        thumbnail.src = result.imageData;
+        thumbnail.alt = options.label || (isFullImage ? '整图预览' : '局部图层预览');
+        const eye = document.createElement('button');
+        eye.className = 'generation-eye';
+        eye.type = 'button';
+        eye.innerText = '👁';
+        eye.onclick = event => { event.stopPropagation(); toggleGenerationPreview(previewId); };
+        const kind = document.createElement('span');
+        kind.className = 'generation-kind';
+        kind.innerText = options.label || (isFullImage ? `整图 ${result.overlay.w}×${result.overlay.h}` : '局部蒙版');
+        card.append(thumbnail, eye, kind);
+        if (options.prepend) items.prepend(card); else items.appendChild(card);
+        const entry = {previewId, objects, button:eye, card, thumbnail, kind, isFullImage, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask)};
+        generationPreviewObjects.set(previewId, entry);
+        syncGenerationPreviewVisibility();
+        return entry;
+    }
+
+    function deleteSelectedPreviewLayer() {
+        const entry = generationPreviewObjects.get(selectedPreviewId);
+        if (!entry) return;
+        if (entry.isMain) {
+            setExpertStatus('主图不能直接删除，请先把其他整图置为主图', '#dcdcaa');
+            return;
+        }
+        const objects = previewEntryObjects(entry);
+        objects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
+        if (entry.isSelectionMask) {
+            expertRectGuides = expertRectGuides.filter(object => !objects.includes(object));
+            expertBrushPaths = expertBrushPaths.filter(object => !objects.includes(object));
+            expertGeneratingGuides = expertGeneratingGuides.filter(object => !objects.includes(object));
+            if (objects.includes(expertGuide)) expertGuide = null;
+            stopExpertSelectionDrawing();
+            updateExpertSelectionControls();
+        }
+        entry.card.remove();
+        generationPreviewObjects.delete(entry.previewId);
+        if (entry.isAnnotation) { annotationMarkerNumber = 1; updateAnnotationMarkerButton(); }
+        selectedPreviewId = null;
+        document.getElementById('preview-selection-toolbar').hidden = true;
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        pushHistoryForPage(currentPageGlobal);
+    }
+
+    function setSelectedLayerAsMain() {
+        const entry = generationPreviewObjects.get(selectedPreviewId);
+        const objects = previewEntryObjects(entry);
+        if (!entry || entry.isAnnotation || entry.isSelectionMask || objects.length !== 1) {
+            setExpertStatus('请选择一张图片图层作为主图', '#f48771');
+            return;
+        }
+        const mainObject = objects[0];
+        generationPreviewObjects.forEach(other => {
+            other.isMain = other.previewId === entry.previewId;
+            previewEntryObjects(other).forEach(object => {
+                object.data.isMain = other.isMain;
+                if (other.isMain) {
+                    object.data.originalType = object.data.originalType || object.data.type;
+                    object.data.type = 'main-image';
+                    object.data.previewVisible = true;
+                    object.set('visible', true);
+                } else {
+                    if (object.data.type === 'main-image') object.data.type = object.data.originalType || 'image-layer';
+                    object.data.previewVisible = false;
+                    object.set('visible', false);
+                }
+            });
+        });
+        mainObject.set({left:0,top:0,angle:0,selectable:true,evented:true,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true});
+        canvas.originalWidth = Math.round(mainObject.getScaledWidth());
+        canvas.originalHeight = Math.round(mainObject.getScaledHeight());
+        document.getElementById('expert-output-width').value = canvas.originalWidth;
+        document.getElementById('expert-output-height').value = canvas.originalHeight;
+        updateExpertSizeWarning();
+        canvas.sendToBack(mainObject);
+        document.getElementById('generation-preview-items').prepend(entry.card);
+        updateExpertEditScope();
+        fitToScreen();
+        syncGenerationPreviewVisibility();
+        canvas.requestRenderAll();
+        setExpertStatus('已置为主图，其他图片图层已暂时隐藏', '#4ec9b0');
+    }
+
+    function setAnnotationColor(color) {
+        annotationColor = color;
+        document.querySelectorAll('.annotation-color').forEach(button => button.classList.toggle('is-active', button.dataset.color === color));
+        if (canvas?.freeDrawingBrush && annotationMode === 'brush') canvas.freeDrawingBrush.color = color;
+    }
+
+    function updateAnnotationActionButtons() {
+        document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
+        document.getElementById('annotation-text-button')?.classList.toggle('is-active', annotationMode === 'text');
+        document.getElementById('annotation-marker-button')?.classList.toggle('is-active', annotationMode === 'marker');
+    }
+
+    function stopAnnotationMode() {
+        if (!canvas) return;
+        annotationMode = null;
+        canvas.isDrawingMode = false;
+        canvas.selection = true;
+        canvas.defaultCursor = 'default';
+        updateAnnotationMarkerButton();
+        updateAnnotationActionButtons();
+    }
+
+    function startAnnotationBrush() {
+        if (!canvas) return;
+        if (annotationMode === 'brush') { stopAnnotationMode(); setExpertStatus('已退出画笔选择模式', '#dcdcaa'); return; }
+        stopExpertSelectionDrawing();
+        stopAnnotationMode();
+        annotationMode = 'brush';
+        canvas.discardActiveObject();
+        canvas.selection = false;
+        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+        canvas.freeDrawingBrush.color = annotationColor;
+        canvas.freeDrawingBrush.width = 8;
+        canvas.isDrawingMode = true;
+        updateAnnotationActionButtons();
+        setExpertStatus('标记画笔已开启，直接在主图上绘制', '#4ec9b0');
+    }
+
+    function addAnnotationText() {
+        if (!canvas) return;
+        if (annotationMode === 'text') { stopAnnotationMode(); setExpertStatus('已退出文字选择模式', '#dcdcaa'); return; }
+        stopAnnotationMode();
+        annotationMode = 'text';
+        canvas.selection = false;
+        canvas.defaultCursor = 'text';
+        updateAnnotationActionButtons();
+        setExpertStatus('文字工具已开启，请点击图面放置文字', '#4ec9b0');
+    }
+
+    function createAnnotationTextAt(pointer) {
+        const text = new fabric.IText('文字', {
+            left:pointer.x, top:pointer.y, fontSize:36, originX:'left', originY:'top',
+            fill:annotationColor, fontFamily:'Segoe UI', selectable:true,
+            data:{type:'annotation',annotationKind:'text',id:Date.now()}
+        });
+        canvas.add(text);
+        canvas.setActiveObject(text);
+        text.enterEditing();
+        text.selectAll();
+        updateAnnotationLayerPreview();
+    }
+
+    function annotationMarkers() {
+        return canvas ? canvas.getObjects().filter(object => object.data?.type === 'annotation' && object.data?.annotationKind === 'marker') : [];
+    }
+
+    function updateAnnotationMarkerButton() {
+        const button = document.getElementById('annotation-marker-button');
+        if (!button) return;
+        button.innerText = annotationMode === 'marker' ? '↺ 归零' : '● 标记';
+        updateAnnotationActionButtons();
+    }
+
+    function markerTextColor(color) {
+        const hex = String(color || '#000000').replace('#','');
+        const red = parseInt(hex.slice(0,2),16) || 0;
+        const green = parseInt(hex.slice(2,4),16) || 0;
+        const blue = parseInt(hex.slice(4,6),16) || 0;
+        return red * .299 + green * .587 + blue * .114 > 160 ? '#16181a' : '#ffffff';
+    }
+
+    function annotationMarkerMetrics() {
+        const shortEdge = Math.max(1, Math.min(canvas?.originalWidth || 1, canvas?.originalHeight || 1));
+        const radius = Math.max(16, Math.min(72, shortEdge * (40 / 1728)));
+        return {radius, fontSize:Math.max(18, radius * 1.08), strokeWidth:Math.max(2, radius * .08)};
+    }
+
+    function placeAnnotationMarker(pointer) {
+        const {radius, fontSize, strokeWidth} = annotationMarkerMetrics();
+        const circle = new fabric.Circle({radius, originX:'center', originY:'center', fill:annotationColor, stroke:'rgba(255,255,255,.9)', strokeWidth});
+        const number = new fabric.Text(String(annotationMarkerNumber), {originX:'center', originY:'center', fontSize, fontWeight:'700', fill:markerTextColor(annotationColor), fontFamily:'Segoe UI'});
+        const marker = new fabric.Group([circle, number], {
+            left:pointer.x, top:pointer.y, originX:'center', originY:'center', selectable:true, evented:true,
+            data:{type:'annotation',annotationKind:'marker',markerNumber:annotationMarkerNumber,id:Date.now()}
+        });
+        annotationMarkerNumber += 1;
+        canvas.add(marker);
+        reorderLayers();
+        updateAnnotationLayerPreview();
+        updateAnnotationMarkerButton();
+        canvas.requestRenderAll();
+    }
+
+    function toggleAnnotationMarker() {
+        if (!canvas) return;
+        if (annotationMode === 'marker') {
+            annotationMarkers().forEach(marker => canvas.remove(marker));
+            annotationMarkerNumber = 1;
+            stopAnnotationMode();
+            updateAnnotationLayerPreview();
+            canvas.requestRenderAll();
+            setExpertStatus('标记号已归零，再次点击“标记”可从 1 开始', '#4ec9b0');
+            return;
+        }
+        stopAnnotationMode();
+        annotationMode = 'marker';
+        canvas.selection = false;
+        canvas.defaultCursor = 'crosshair';
+        updateAnnotationMarkerButton();
+        setExpertStatus('标记工具已开启，点击图面依次添加编号', '#4ec9b0');
+    }
+
+    function exportAnnotationLayerImage() {
+        const annotations = canvas.getObjects().filter(object => object.data?.type === 'annotation');
+        if (!annotations.length) return null;
+        const states = canvas.getObjects().map(object => ({object,visible:object.visible}));
+        const background = canvas.backgroundColor;
+        const dimensions = {width:canvas.getWidth(),height:canvas.getHeight()};
+        const viewport = canvas.viewportTransform.slice();
+        states.forEach(state => state.object.set('visible', annotations.includes(state.object)));
+        canvas.backgroundColor = 'rgba(0,0,0,0)';
+        canvas.setDimensions({width:canvas.originalWidth,height:canvas.originalHeight});
+        canvas.setViewportTransform([1,0,0,1,0,0]);
+        canvas.renderAll();
+        const data = canvas.toDataURL({format:'png',left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,multiplier:1});
+        states.forEach(state => state.object.set('visible', state.visible));
+        canvas.backgroundColor = background;
+        canvas.setDimensions(dimensions);
+        canvas.setViewportTransform(viewport);
+        canvas.renderAll();
+        return data;
+    }
+
+    function updateAnnotationLayerPreview() {
+        const objects = canvas.getObjects().filter(object => object.data?.type === 'annotation');
+        if (!objects.length) {
+            const entry = generationPreviewObjects.get(annotationPreviewId);
+            entry?.card?.remove();
+            generationPreviewObjects.delete(annotationPreviewId);
+            if (selectedPreviewId === annotationPreviewId) {
+                selectedPreviewId = null;
+                document.getElementById('preview-selection-toolbar').hidden = true;
+            }
+            updateAnnotationMarkerButton();
+            return;
+        }
+        const imageData = exportAnnotationLayerImage();
+        if (!imageData) return;
+        addGenerationPreview({id:annotationPreviewId,imageData,overlay:{w:canvas.originalWidth,h:canvas.originalHeight}}, objects, false, {previewId:annotationPreviewId,label:'标记图层',isAnnotation:true});
+    }
+
+    function expertEditScope() {
+        return document.querySelector('input[name="expert-edit-scope"]:checked')?.value || 'full';
+    }
+
+    function updateExpertEditScope() {
+        const full = expertEditScope() === 'full';
+        document.getElementById('expert-scope-status').innerText = full
+            ? `整张修改：蒙版画布固定为主图尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}；未绘制时全图可修改，生成输出按“生成尺寸”设置`
+            : '局部修改：请框选或涂抹需要修改的区域';
+        updateExpertSelectionControls();
+    }
+
+    // 缩小控制点（角点）大小，减少对视线的干扰
+    if (typeof fabric !== 'undefined' && fabric.Object) {
+        fabric.Object.prototype.cornerSize = 6; // 默认可能为 12，缩小一半
+        fabric.Object.prototype.transparentCorners = false;
+    }
+
+    // 全局更新工具按钮状态的函数（使用全局 canvas 以及模式标志）
+    function updateToolButtonStates() {
+        const pickerBtn = document.getElementById('color-picker-btn');
+        const bucketBtn = document.getElementById('paint-bucket-btn');
+        if (!pickerBtn || !bucketBtn) return;
+
+        if (isPickingColor) {
+            pickerBtn.style.borderColor = '#0e639c';
+            pickerBtn.style.background = '#1e1e2e';
+            if (canvas) canvas.defaultCursor = 'crosshair';
+        } else {
+            pickerBtn.style.borderColor = '#555';
+            pickerBtn.style.background = '#3e3e42';
+            if (!isPaintBucketMode && canvas) canvas.defaultCursor = 'default';
+        }
+
+        if (isPaintBucketMode) {
+            bucketBtn.style.borderColor = '#0e639c';
+            bucketBtn.style.background = '#1e1e2e';
+            if (canvas) canvas.defaultCursor = 'pointer';
+        } else {
+            bucketBtn.style.borderColor = '#555';
+            bucketBtn.style.background = '#3e3e42';
+            if (!isPickingColor && canvas) canvas.defaultCursor = 'default';
+        }
+    }
+
+    // 监听窗口大小变化，自动适配
+    window.addEventListener('resize', function() {
+        if (canvas) fitToScreen();
+    });
+
+    function fitToScreen() {
+        if (!canvas || !canvas.originalWidth || !canvas.originalHeight) return;
+
+        const wrapper = document.getElementById('canvas-stage');
+        const padding = 20;
+        const workspaceWidth = Math.max(1, wrapper.clientWidth);
+        const workspaceHeight = Math.max(1, wrapper.clientHeight);
+        const zoom = Math.max(0.1, Math.min(
+            Math.max(1, workspaceWidth - padding * 2) / canvas.originalWidth,
+            Math.max(1, workspaceHeight - padding * 2) / canvas.originalHeight
+        ));
+        const offsetX = (workspaceWidth - canvas.originalWidth * zoom) / 2;
+        const offsetY = (workspaceHeight - canvas.originalHeight * zoom) / 2;
+
+        // 在调整时隐藏画布避免视觉闪烁
+        try { canvas.lowerCanvasEl.style.visibility = 'hidden'; } catch(e) {}
+        canvas.setDimensions({ width: workspaceWidth, height: workspaceHeight });
+        canvas.setViewportTransform([zoom, 0, 0, zoom, offsetX, offsetY]);
+        canvas.renderAll();
+        try { canvas.lowerCanvasEl.style.visibility = 'visible'; } catch(e) {}
+    }
+
+    function pointIsOnSlide(point) {
+        return point.x >= 0 && point.y >= 0 && point.x <= canvas.originalWidth && point.y <= canvas.originalHeight;
+    }
+
+    function clampPointToSlide(point) {
+        return {
+            x: Math.max(0, Math.min(canvas.originalWidth, point.x)),
+            y: Math.max(0, Math.min(canvas.originalHeight, point.y))
+        };
+    }
+
+    // --- 新增功能 ---
+    function openFile() {
+        // Web 模式：触发文件上传
+        if (window.isWebMode) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pptx';
+            
+            input.onchange = async function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // 上传文件
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    const uploadRes = await fetch('/upload', {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: formData
+                    });
+                    
+                    const uploadData = await uploadRes.json();
+                    const serverPath = uploadData.path;
+                    
+                    // 打开文件
+                    const filename = file.name;
+                    const openRes = await pywebview.api.open_pptx_by_name(filename);
+                    const openResult = JSON.parse(openRes);
+                    
+                    if (openResult.success) {
+                        // 清空历史记录
+                        historyMap = {};
+                        
+                        // 重置透明度 UI
+                        currentOpacity = 0.8;
+                        document.getElementById('opacity-slider').value = 80;
+                        document.getElementById('opacity-val').innerText = "80%";
+                        
+                        // 加载数据
+                        const slideData = await pywebview.api.get_slide_data();
+                        if (slideData && slideData !== 'null') {
+                            initCanvas(JSON.parse(slideData));
+                        }
+                    } else {
+                        alert('打开文件失败：' + (openResult.error || '未知错误'));
+                    }
+                } catch (err) {
+                    alert('文件上传失败: ' + err);
+                }
+            };
+            
+            input.click();
+            return;
+        }
+        
+        // Desktop 模式：原有逻辑
+        pywebview.api.open_file().then(res => {
+            if(res) {
+                // 【核心修改】打开新文件时，才彻底清空历史记录
+                // 翻页时不要调用这个，否则会丢失上一页的记录
+                historyMap = {};
+
+                // 重置透明度 UI
+                currentOpacity = 0.8;
+                document.getElementById('opacity-slider').value = 80;
+                document.getElementById('opacity-val').innerText = "80%";
+
+                initCanvas(JSON.parse(res));
+            }
+        });
+    }
+
+    function changePage(delta) {
+        // 在切页前把当前页的临时修改保存到后端内存（不一定写入文件）
+        try {
+            const payload = getPagePayload();
+            pywebview.api.save_temp(JSON.stringify(payload)).then(() => {
+                pywebview.api.change_page(delta).then(res => {
+                    if (res) initCanvas(JSON.parse(res));
+                });
+            });
+        } catch (e) {
+            console.log('切页时保存临时数据失败:', e);
+            pywebview.api.change_page(delta).then(res => { if (res) initCanvas(JSON.parse(res)); });
+        }
+    }
+
+    // 初始化
+    window.addEventListener('pywebviewready', async function() {
+        await loadExpertModels();
+        const res = await pywebview.api.get_slide_data();
+        initCanvas(JSON.parse(res));
+    });
+
+    function initCanvas(data) {
+        const editPage = document.getElementById('app-page-edit');
+        if (editPage) {
+            editPage.querySelectorAll('.app-no-file-message, .no-file-message').forEach(message => message.remove());
+        }
+
+        let currentPage = data.page_info ? data.page_info.current : 1;
+        currentPageGlobal = currentPage;
+        loadingPageNumber = currentPage;  // 🔧 标记正在加载的页面
+        
+        // 【修复1】在开始加载前，强制锁定历史记录，防止加载过程中的 object:added 触发记录
+        isRestoringHistory = true; 
+
+        // 更新页码显示
+        if (data.page_info) {
+            document.getElementById('page-info').innerText = `${data.page_info.current} / ${data.page_info.total}`;
+        }
+
+        // ==========================================
+        // 【核心修复 1】: 进场时，强制让 UI 匹配当前的全局 currentOpacity
+        // 这样翻页后，滑块还是保持在你刚才调的位置，而不是跳回 80%
+        // ==========================================
+        document.getElementById('opacity-slider').value = Math.round(currentOpacity * 100);
+        document.getElementById('opacity-val').innerText = Math.round(currentOpacity * 100) + "%";
+
+        // 【核心修改 3】: 彻底销毁旧 Canvas 实例
+        if (canvas) {
+            try {
+                canvas.dispose(); 
+            } catch(e) { console.error("Canvas dispose error:", e); }
+            canvas = null;
+        }
+        
+        // 确保 DOM 元素干净（虽然 dispose 通常会处理，但为了保险）
+        // 如果 id="c" 的 canvas 元素被移除，这里可以重新校验，通常 fabric.js dispose 会还原 canvas 标签
+        
+        canvas = new fabric.Canvas('c', {
+            width: data.width,
+            height: data.height,
+            backgroundColor: getCanvasThemeColor(),
+            preserveObjectStacking: true,
+            selectionKey: 'ctrlKey',
+            fireMiddleClick: true,  // 【关键修改】开启中键响应
+            stopContextMenu: true   // 【建议添加】禁用默认右键菜单
+        });
+        
+        canvas.originalWidth = data.width;
+        canvas.originalHeight = data.height;
+        document.getElementById('expert-output-width').value = data.width;
+        document.getElementById('expert-output-height').value = data.height;
+        updateExpertSizeWarning();
+        resetGenerationPreviews();
+
+        // ==========================================
+        // 【修改点】：在此处立即调用适配屏幕，防止跳动
+        // ==========================================
+        fitToScreen();
+
+        // 【核心修改】如果该页的历史记录不存在，才创建新的；如果存在，保留原有的！
+        // 这样当你切回这一页时，之前的 undo 栈还在。
+        if (!historyMap[currentPage]) {
+            historyMap[currentPage] = { undo: [], redo: [] };
+        }
+
+        // 1. 同步加载蒙版和文本（先加到画布上）
+        // 加载蒙版
+        data.masks.forEach(m => {
+            // 根据 shapeType 判断绘制圆形还是矩形
+            let maskObj;
+            if (m.shapeType === 'circle') {
+                let radius = m.w / 2;
+                maskObj = new fabric.Circle({
+                    left: m.x, top: m.y,
+                    radius: radius,
+                    fill: m.color, opacity: currentOpacity,
+                    selectable: true, hasControls: true,
+                    data: { type: 'mask', id: m.id, shapeType: 'circle' }
+                });
+            } else {
+                maskObj = new fabric.Rect({
+                    left: m.x, top: m.y, width: m.w, height: m.h,
+                    fill: m.color, opacity: currentOpacity,
+                    selectable: true, hasControls: true,
+                    data: { type: 'mask', id: m.id, shapeType: 'rect' }
+                });
+            }
+            canvas.add(maskObj);
+        });
+
+        // 加载高级蒙版
+        (data.advanced_masks || []).forEach(a => {
+            if (!a.imageData || !a.overlay) return;
+            fabric.Image.fromURL(a.imageData, function(img) {
+                img.set({
+                    left: a.overlay.x, top: a.overlay.y,
+                    scaleX: a.overlay.w / img.width, scaleY: a.overlay.h / img.height,
+                    selectable: true, evented: true, hasControls: false,
+                    lockMovementX: true, lockMovementY: true,
+                    lockScalingX: true, lockScalingY: true, lockRotation: true,
+                    data: { type: 'advanced-mask', id: a.id, assetId: a.assetId, target: a.target }
+                });
+                canvas.add(img); reorderLayers();
+                updateLayerMode(document.querySelector('input[name="mode"]:checked')?.value || 'text');
+                canvas.requestRenderAll();
+            });
+        });
+
+        // 加载文本
+        data.texts.forEach(t => {
+            let textObj = new fabric.IText(t.text, {
+                left: t.x, top: t.y, fontSize: t.fontSize, fill: t.color, fontFamily: 'Arial',
+                angle: t.rotation || 0, // 【修复 Bug 2】: 应用旋转角度
+                selectable: true,
+                data: { type: 'text', id: t.id }
+            });
+            canvas.add(textObj);
+        });
+
+        // 2. 异步加载背景图
+        fabric.Image.fromURL(data.bg_image, function(img) {
+            let scaleX = data.width / img.width;
+            let scaleY = data.height / img.height;
+            img.set({ selectable: true, evented: true, left: 0, top: 0, scaleX: scaleX, scaleY: scaleY,
+                lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
+                data:{type:'main-image',originalType:'image-layer',isMain:true,previewVisible:true} });
+            
+            // 背景图必须在最底层
+            canvas.add(img);
+            canvas.sendToBack(img);
+            addGenerationPreview({id:'source-main',imageData:data.bg_image,overlay:{w:data.width,h:data.height}}, img, true, {previewId:'source-main',label:`主图 ${data.width}×${data.height}`,isMain:true,prepend:true});
+            updateExpertEditScope();
+            
+            // 🚀 异步加载高清图（无感替换）+ 防止竞态条件
+            const requestedPage = loadingPageNumber;  // 🔧 记录请求时的页码
+            setTimeout(() => {
+                if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.get_hq_background) {
+                    pywebview.api.get_hq_background().then(res => {
+                        try {
+                            // 🔧 关键修复：检查页码是否还是请求时的页码
+                            if (loadingPageNumber !== requestedPage) {
+                                console.log(`⚠️ HQ load cancelled: page changed (${requestedPage} -> ${loadingPageNumber})`);
+                                return;  // 用户已翻页，放弃加载
+                            }
+                            
+                            const hqData = JSON.parse(res);
+                            if (hqData.bg_image) {
+                                fabric.Image.fromURL(hqData.bg_image, function(hqImg) {
+                                    // 🔧 再次检查页码（图片加载也需要时间）
+                                    if (loadingPageNumber !== requestedPage) {
+                                        console.log(`⚠️ HQ render cancelled: page changed during image load`);
+                                        return;
+                                    }
+                                    
+                                    hqImg.set({ selectable:true,evented:true,left:0,top:0,scaleX:scaleX,scaleY:scaleY,
+                                        lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,data:{...img.data} });
+                                    const mainEntry = generationPreviewObjects.get(img.data.previewId);
+                                    canvas.remove(img);
+                                    canvas.add(hqImg);
+                                    if (mainEntry) mainEntry.objects = [hqImg];
+                                    canvas.sendToBack(hqImg);
+                                    canvas.requestRenderAll();
+                                    console.log(`✅ HQ background loaded for page ${requestedPage}`);
+                                });
+                            }
+                        } catch(e) { console.log('HQ load failed:', e); }
+                    });
+                }
+            }, 100);
+            
+            // 在背景图加载完成后解除锁定并尝试记录一次“当前初始状态”。
+            // pushHistoryForPage 内部有去重逻辑：如果状态与栈顶相同则不会重复入栈。
+            setTimeout(() => {
+                isRestoringHistory = false; // 解锁
+
+                // 尝试记录“当前初始状态”。去重逻辑会避免重复记录已有快照。
+                pushHistoryForPage(currentPage);
+
+                console.log(`Page ${currentPage} loaded. History stack size: ${historyMap[currentPage].undo.length}`);
+                // 背景图加载完毕后无需再次 fitToScreen，前面已处理。
+                // 仅刷新视图以确保渲染完整。
+                try { canvas.requestRenderAll(); } catch(e) {}
+            }, 50);
+        });
+
+        bindEvents();
+        updateToolButtonStates();
+        updateLayerMode(document.querySelector('input[name="mode"]:checked')?.value || 'text');
+        applyCanvasTheme();
+    }
+
+    function bindEvents() {
+        // DOM 按钮事件只绑定一次；画布事件每次为当前 canvas 绑定
+        // 定义一个始终可用的 updateFontInput（直接查询 DOM），确保在换页后也能使用
+        function updateFontInput() {
+            try {
+                let fontInput = document.getElementById('font-height-input');
+                if (!fontInput || !canvas) return;
+                let active = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
+                if (!active || active.length === 0) { fontInput.value = ''; return; }
+                // 优先使用第一个文本对象的 fontSize
+                let found = active.find(o => o.data?.type === 'text');
+                if (found) {
+                    fontInput.value = Math.round(found.fontSize || 0);
+                } else {
+                    fontInput.value = '';
+                }
+            } catch(e) { console.log('updateFontInput err', e); }
+        }
+        if (!toolEventsBound) {
+            toolEventsBound = true;
+            // 首次同步按钮状态（使用全局 updateToolButtonStates）
+            updateToolButtonStates();
+
+            // --- 颜色吸取按钮事件 (DOM 按钮，绑定一次) ---
+            document.getElementById('color-picker-btn').addEventListener('click', function() {
+                isPickingColor = !isPickingColor;
+                isPaintBucketMode = false;
+                updateToolButtonStates();
+                if (isPickingColor && canvas) {
+                    canvas.discardActiveObject();
+                    canvas.requestRenderAll();
+                }
+            });
+
+            // --- 漆桶填充按钮事件 (DOM 按钮，绑定一次) ---
+            document.getElementById('paint-bucket-btn').addEventListener('click', function() {
+                isPaintBucketMode = !isPaintBucketMode;
+                isPickingColor = false;
+                updateToolButtonStates();
+                if (isPaintBucketMode && canvas) {
+                    canvas.discardActiveObject();
+                    canvas.requestRenderAll();
+                }
+            });
+            // --- 键盘箭头移动（在选中对象时生效） ---
+            window.addEventListener('keydown', function(e) {
+                // 撤销/重做快捷键
+                if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
+                    doUndo(); e.preventDefault(); return;
+                }
+                if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) {
+                    doRedo(); e.preventDefault(); return;
+                }
+                // 删除选中对象（文本或蒙版）
+                if (e.key === 'Delete') {
+                    if (!canvas) return;
+                    const activeObject = canvas.getActiveObject?.();
+                    if (activeObject?.isEditing) return;
+                    let activeObjects = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
+                    if (activeObjects && activeObjects.length > 0) {
+                        let removed = false;
+                        activeObjects.forEach(obj => {
+                            if (['text', 'mask', 'advanced-mask', 'annotation'].includes(obj.data?.type)) {
+                                try { canvas.remove(obj); removed = true; } catch(e) {}
+                            }
+                        });
+                        if (removed) {
+                            canvas.discardActiveObject();
+                            updateAnnotationLayerPreview();
+                            updateAnnotationMarkerButton();
+                            canvas.requestRenderAll();
+                            try { document.getElementById('font-height-input').value = ''; } catch(e) {}
+                            e.preventDefault();
+                        }
+                    }
+                    return;
+                }
+
+                const arrowKeys = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+                if (!arrowKeys.includes(e.key)) return;
+                // 如果没有 canvas 或没有选中对象，忽略
+                if (!canvas) return;
+                let activeObjects = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
+                if (!activeObjects || activeObjects.length === 0) return;
+
+                // 如果当前有对象正在编辑，先退出编辑模式
+                if (canvas.getActiveObject() && canvas.getActiveObject().isEditing) {
+                    canvas.getActiveObject().exitEditing();
+                }
+
+                // 如果处于创建、取色或填充模式，先退出这些模式
+                if (isCreatingObject) {
+                    toggleCreateMode();
+                }
+                if (isPickingColor) {
+                    isPickingColor = false;
+                    updateToolButtonStates();
+                }
+                if (isPaintBucketMode) {
+                    isPaintBucketMode = false;
+                    updateToolButtonStates();
+                }
+
+                // 仅在文本或蒙版对象上生效
+                let moved = false;
+                const step = e.shiftKey ? 10 : 1;
+                activeObjects.forEach(obj => {
+                    if (!obj.data) return;
+                    if (obj.data.type !== 'text' && obj.data.type !== 'mask') return;
+                    if (e.key === 'ArrowUp') obj.top = (obj.top || 0) - step;
+                    if (e.key === 'ArrowDown') obj.top = (obj.top || 0) + step;
+                    if (e.key === 'ArrowLeft') obj.left = (obj.left || 0) - step;
+                    if (e.key === 'ArrowRight') obj.left = (obj.left || 0) + step;
+                    obj.setCoords();
+                    moved = true;
+                });
+                if (moved) {
+                    e.preventDefault();
+                    canvas.requestRenderAll();
+                }
+            });
+
+            // 字高工具 DOM 绑定（仅绑定一次）
+            const fontInput = document.getElementById('font-height-input');
+            const btnInc = document.getElementById('font-increase');
+            const btnDec = document.getElementById('font-decrease');
+            function applyFontSizeToSelection(size) {
+                if (!canvas) return;
+                let active = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
+                if (!active || active.length === 0) return;
+                active.forEach(o => {
+                    if (o.data?.type === 'text') {
+                        o.scaleX = 1;
+                        o.scaleY = 1;
+                        o.fontSize = size;
+                        o.setCoords();
+                    }
+                });
+                canvas.requestRenderAll();
+                try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+            }
+            if (fontInput) {
+                fontInput.addEventListener('change', (e) => {
+                    let v = parseInt(e.target.value);
+                    if (!isNaN(v) && v > 0) applyFontSizeToSelection(v);
+                });
+                // 点击或键入时也更新当前输入框显示的值
+                fontInput.addEventListener('focus', updateFontInput);
+            }
+            if (btnInc) btnInc.addEventListener('click', () => {
+                let v = parseInt(fontInput.value) || 0; v = Math.max(1, v + 1);
+                fontInput.value = v; applyFontSizeToSelection(v);
+            });
+            if (btnDec) btnDec.addEventListener('click', () => {
+                let v = parseInt(fontInput.value) || 0; v = Math.max(1, v - 1);
+                fontInput.value = v; applyFontSizeToSelection(v);
+            });
+
+            // 初次绑定时更新一次输入框
+            try { updateFontInput(); } catch(e) {}
+        }
+
+        // --- 为当前 canvas 绑定交互事件（每个新 canvas 需要重新绑定） ---
+        if (canvas) {
+            // 仅移除我们将要重绑定的事件，保留其他全局或重要事件
+            canvas.off('mouse:move');
+            canvas.off('mouse:down');
+            canvas.off('mouse:up');
+            canvas.off('mouse:dblclick');
+            canvas.off('object:modified');
+            canvas.off('mouse:over');
+            canvas.off('mouse:wheel');
+        }
+
+        // --- 滚轮缩放 ---
+        canvas.on('mouse:wheel', function(opt) {
+            // 【核心修复】退出编辑并丢弃选中，避免 editing:exited 将对象重新选中导致残影
+            var activeObj = canvas.getActiveObject();
+            if (activeObj) {
+                if (activeObj.isEditing) {
+                    try { activeObj.exitEditing(); } catch(e) {}
+                }
+                // 关键：强制丢弃当前选中状态，覆盖 editing:exited 中可能的自动选中逻辑
+                try { canvas.discardActiveObject(); } catch(e) {}
+            }
+
+            var delta = opt.e.deltaY;
+            var zoom = canvas.getZoom();
+            zoom *= 0.999 ** delta;
+            if (zoom > 20) zoom = 20;
+            if (zoom < 0.01) zoom = 0.01;
+            
+            // 执行缩放并立即请求重绘，确保状态在同一帧内更新
+            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+            try { canvas.requestRenderAll(); } catch(e) {}
+
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+        });
+
+        // --- 鼠标交互（集成：中键拖拽、空格拖拽兼容、绘制、取色、填充） ---
+        let isDragging = false;
+        let lastPosX, lastPosY;
+
+        // --- 鼠标按下 (集成绘制、取色、填充、中键拖拽) ---
+        canvas.on('mouse:down', function(opt) {
+            var evt = opt.e;
+
+            // 【修改点】检测中键 (button=1)
+            // 必须在 initCanvas 中设置 fireMiddleClick: true 才会生效
+            if (evt.button === 1) {
+                isDragging = true;
+                canvas.selection = false; // 禁用框选
+                lastPosX = evt.clientX;
+                lastPosY = evt.clientY;
+                canvas.defaultCursor = 'grabbing'; // 改变光标
+
+                // 阻止浏览器默认的中键滚动行为
+                try { evt.preventDefault(); evt.stopPropagation(); } catch(e) {}
+                return;
+            }
+
+            if (evt.button === 0 && (annotationMode === 'text' || annotationMode === 'marker')) {
+                const pointer = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(pointer)) return;
+                if (annotationMode === 'text') createAnnotationTextAt(pointer);
+                else placeAnnotationMarker(pointer);
+                return;
+            }
+
+            try { preMouseDownSelection = (canvas.getActiveObjects ? canvas.getActiveObjects().slice() : []) || []; } catch(e) {}
+
+            if (expertSelecting) {
+                if (evt.button !== 0) return;
+                let ptr = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(ptr)) return;
+                drawStartX = ptr.x;
+                drawStartY = ptr.y;
+                drawingObject = new fabric.Rect({
+                    left: drawStartX, top: drawStartY, width: 0, height: 0,
+                    fill: 'rgba(14,99,156,0.30)', stroke: '#4aa3df', strokeWidth: 3,
+                    strokeDashArray: [6, 4], selectable: false, evented: false,
+                    data: { type: 'expert-guide' }
+                });
+                canvas.add(drawingObject);
+                return;
+            }
+
+            if (isCreatingAdvancedMask) {
+                if (evt.button !== 0) return;
+                let ptr = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(ptr)) return;
+                drawStartX = ptr.x;
+                drawStartY = ptr.y;
+                drawingObject = new fabric.Rect({
+                    left: drawStartX, top: drawStartY, width: 0, height: 0,
+                    fill: 'rgba(0,92,68,0.48)', stroke: '#00d394', strokeWidth: 3,
+                    strokeDashArray: [6, 4], selectable: false, evented: false,
+                    data: { type: 'advanced-mask-guide' }
+                });
+                canvas.add(drawingObject);
+                return;
+            }
+
+            // 下面是原有的左键逻辑 (保持不变)
+            if (isCreatingObject) {
+                // 只有左键才允许绘制
+                if (evt.button !== 0) return;
+
+                let ptr = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(ptr)) return;
+                drawStartX = ptr.x;
+                drawStartY = ptr.y;
+                let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+
+                if (currentMode === 'text' || currentMode === 'all') {
+                    let fontSize = parseInt(document.getElementById('font-height-input').value) || 30;
+                    let color = pickedColor || '#000000'; 
+                    let adjustedTop = drawStartY - fontSize;
+                    let textObj = new fabric.IText('', { 
+                        left: drawStartX, top: adjustedTop, fontSize: fontSize, fill: color, fontFamily: 'Arial',
+                        data: { type: 'text', id: Date.now() }
+                    });
+                    textObj.on('keydown', function(e) {
+                        if (e.e.keyCode === 13) { textObj.exitEditing(); e.e.preventDefault(); e.e.stopPropagation(); }
+                    });
+                    textObj.on('editing:exited', function() {
+                        if (!textObj.text || !textObj.text.trim()) {
+                            canvas.remove(textObj); canvas.discardActiveObject(); canvas.requestRenderAll(); return;
+                        } else { try { pushHistoryForPage(currentPageGlobal); } catch(e) {} }
+                        canvas.setActiveObject(textObj); canvas.requestRenderAll();
+                    });
+                    canvas.add(textObj); canvas.setActiveObject(textObj); reorderLayers();
+                    toggleCreateMode(); textObj.enterEditing();
+                    return;
+                } else if (currentMode === 'mask') {
+                    let shapeType = document.querySelector('input[name="new-shape-type"]:checked')?.value || 'rect';
+                    let color = pickedColor || '#ffffff';
+                    if (shapeType === 'rect') {
+                        drawingObject = new fabric.Rect({ left: drawStartX, top: drawStartY, width: 0, height: 0, fill: color, opacity: currentOpacity, data: { type: 'mask', id: Date.now() } });
+                    } else {
+                        drawingObject = new fabric.Circle({ left: drawStartX, top: drawStartY, radius: 0, fill: color, opacity: currentOpacity, data: { type: 'mask', id: Date.now(), shapeType: 'circle' } });
+                    }
+                    canvas.add(drawingObject);
+                    return;
+                }
+            }
+
+            // 左键点击工具逻辑
+            if (evt.button === 0) {
+                 if (isPickingColor) {
+                    try {
+                        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+                        const clientX = opt.e.clientX; const clientY = opt.e.clientY;
+                        const scaleX = canvas.lowerCanvasEl.width / rect.width; const scaleY = canvas.lowerCanvasEl.height / rect.height;
+                        let x = Math.floor((clientX - rect.left) * scaleX); let y = Math.floor((clientY - rect.top) * scaleY);
+                        if (x >= 0 && y >= 0 && x < canvas.lowerCanvasEl.width && y < canvas.lowerCanvasEl.height) {
+                            let ctx = canvas.lowerCanvasEl.getContext('2d');
+                            let imageData = ctx.getImageData(x, y, 1, 1);
+                            let pixel = imageData.data;
+                            let hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1).toUpperCase();
+                            pickedColor = hex;
+                            document.getElementById('color-swatch').style.backgroundColor = hex;
+                            document.getElementById('hex-code').innerText = hex;
+                        }
+                    } catch (e) { }
+                    isPickingColor = false; updateToolButtonStates();
+                } else if (isPaintBucketMode && pickedColor && opt.target) {
+                    let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+                    if (currentMode === 'text' && opt.target.data?.type === 'text') {
+                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                    } else if (currentMode === 'mask' && opt.target.data?.type === 'mask') {
+                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                    }
+                }
+                try { if (opt.target && opt.target.data?.type === 'text') { updateFontInput(); } } catch(e) { }
+            }
+        });
+
+        // --- 鼠标移动 (处理拖拽) ---
+        canvas.on('mouse:move', function(opt) {
+            // 1. 拖拽画布 (优先级最高)
+            if (isDragging) {
+                var e = opt.e;
+                var vpt = canvas.viewportTransform;
+                vpt[4] += e.clientX - lastPosX;
+                vpt[5] += e.clientY - lastPosY;
+                canvas.requestRenderAll();
+                lastPosX = e.clientX;
+                lastPosY = e.clientY;
+                // 持续阻止默认行为
+                try { e.preventDefault(); e.stopPropagation(); } catch(err) {}
+                return;
+            }
+
+            // 2. 绘制中 (保持不变)
+            if ((isCreatingObject || isCreatingAdvancedMask || expertSelecting) && drawingObject) {
+                let ptr = clampPointToSlide(canvas.getPointer(opt.e));
+                if (drawingObject.type === 'rect') {
+                    let w = Math.abs(ptr.x - drawStartX); let h = Math.abs(ptr.y - drawStartY);
+                    drawingObject.set({ width: w, height: h });
+                    drawingObject.set({ left: ptr.x < drawStartX ? ptr.x : drawStartX, top: ptr.y < drawStartY ? ptr.y : drawStartY });
+                } else if (drawingObject.type === 'circle') {
+                    let w = Math.abs(ptr.x - drawStartX); let h = Math.abs(ptr.y - drawStartY);
+                    let left = ptr.x < drawStartX ? ptr.x : drawStartX; let top = ptr.y < drawStartY ? ptr.y : drawStartY;
+                    let diameter = Math.max(w, h);
+                    drawingObject.set({ radius: diameter / 2, left: left, top: top });
+                }
+                canvas.requestRenderAll();
+                return;
+            }
+
+            // 3. 取色预览 (保持不变)
+            if (isPickingColor) {
+                 try {
+                    const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+                    const clientX = opt.e.clientX; const clientY = opt.e.clientY;
+                    const scaleX = canvas.lowerCanvasEl.width / rect.width; const scaleY = canvas.lowerCanvasEl.height / rect.height;
+                    let x = Math.floor((clientX - rect.left) * scaleX); let y = Math.floor((clientY - rect.top) * scaleY);
+                    if (x < 0 || y < 0 || x >= canvas.lowerCanvasEl.width || y >= canvas.lowerCanvasEl.height) return;
+                    let ctx = canvas.lowerCanvasEl.getContext('2d');
+                    let imageData = ctx.getImageData(x, y, 1, 1);
+                    let pixel = imageData.data;
+                    let hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1).toUpperCase();
+                    pickedColor = hex;
+                    document.getElementById('color-swatch').style.backgroundColor = hex;
+                    document.getElementById('hex-code').innerText = hex;
+                } catch (e) { }
+            }
+        });
+
+        // --- 鼠标松开 (结束拖拽) ---
+        canvas.on('mouse:up', function(opt) {
+            // 结束拖拽
+            if (isDragging) {
+                isDragging = false;
+                canvas.setViewportTransform(canvas.viewportTransform); // 提交变换
+                
+                // 恢复光标和选框
+                canvas.defaultCursor = isCreatingObject || isPickingColor ? 'crosshair' : 'default';
+                if (!isCreatingObject && !isPickingColor && !isPaintBucketMode) {
+                     canvas.selection = true;
+                }
+                return;
+            }
+
+            // 结束绘制 (保持不变)
+            if (expertSelecting && drawingObject) {
+                const completed = drawingObject;
+                drawingObject = null;
+                if (completed.getScaledWidth() < 5 || completed.getScaledHeight() < 5) {
+                    canvas.remove(completed);
+                } else {
+                    completed.setCoords(); expertRectGuides.push(completed);
+                }
+                updateExpertSelectionControls();
+                refreshExpertSelectionPreview();
+                if (expertSelectionActive && expertSelectionMode() === 'rect') {
+                    expertSelecting = true; canvas.defaultCursor = 'crosshair'; canvas.selection = false;
+                }
+                canvas.requestRenderAll(); return;
+            }
+
+            if (isCreatingAdvancedMask && drawingObject) {
+                const guide = drawingObject;
+                drawingObject = null;
+                if (guide.getScaledWidth() < 5 || guide.getScaledHeight() < 5) {
+                    canvas.remove(guide); canvas.requestRenderAll();
+                } else {
+                    generateAdvancedMaskFromGuide(guide);
+                }
+                canvas.defaultCursor = 'crosshair';
+                return;
+            }
+
+            if (isCreatingObject && drawingObject) {
+                if ((drawingObject.width && drawingObject.width < 5) || (drawingObject.radius && drawingObject.radius < 3)) {
+                    canvas.remove(drawingObject);
+                } else {
+                    drawingObject.setCoords(); reorderLayers(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                }
+                drawingObject = null; toggleCreateMode();
+                return;
+            }
+        });
+
+        canvas.on('path:created', function(event) {
+            if (annotationMode === 'brush' && event.path) {
+                const path = event.path;
+                path.set({stroke:annotationColor,fill:null,opacity:1,selectable:true,evented:true,strokeLineCap:'round',strokeLineJoin:'round',data:{type:'annotation',annotationKind:'brush',id:Date.now()}});
+                reorderLayers();
+                updateAnnotationLayerPreview();
+                canvas.requestRenderAll();
+                return;
+            }
+            if (!expertMode || !expertSelectionActive || expertSelectionMode() !== 'brush' || !event.path) return;
+            const path = event.path;
+            path.set({stroke:'#4aa3df',fill:null,opacity:.72,selectable:false,evented:false,
+                strokeLineCap:'round',strokeLineJoin:'round',data:{type:'expert-guide'}});
+            expertBrushPaths.push(path); updateExpertSelectionControls();
+            refreshExpertSelectionPreview();
+            reorderLayers(); canvas.requestRenderAll();
+        });
+
+        // --- 鼠标悬停 (光标变化) ---
+        canvas.on('mouse:over', function(e) {
+            if (e.target && e.target.data?.type === 'text') {
+                // 文本悬停效果：Fabric IText 默认会有 I-beam，不用特意改
+            }
+        });
+
+        // 绑定选区变化以更新字高输入框并维护选中对象缓存
+        canvas.on('selection:created', function(e) { try { selectedObjectsCache = canvas.getActiveObjects ? canvas.getActiveObjects() : []; /* 标记被选对象 */ if (selectedObjectsCache && selectedObjectsCache.length>0) selectedObjectsCache.forEach(o=>o._wasSelected=true); updateFontInput(); } catch(err) {} });
+        canvas.on('selection:updated', function(e) { try { selectedObjectsCache = canvas.getActiveObjects ? canvas.getActiveObjects() : []; /* 标记被选对象 */ if (selectedObjectsCache && selectedObjectsCache.length>0) selectedObjectsCache.forEach(o=>o._wasSelected=true); updateFontInput(); } catch(err) {} });
+        canvas.on('selection:cleared', function() { try { /* 清除所有标记 */ canvas.getObjects().forEach(o=>{ try{o._wasSelected=false;}catch(e){} }); selectedObjectsCache = []; document.getElementById('font-height-input').value = ''; } catch(e) {} });
+
+        // --- 双击调整字高 ---
+        canvas.on('mouse:dblclick', function(opt) {
+            if (!opt.target || opt.target.data?.type !== 'text') return;
+
+            // 如果当前有多选且双击对象属于选区：把被选中的所有文字统一为被双击对象的字高
+            // 优先使用 preMouseDownSelection -> 已标记的选中对象 -> 当前 active objects
+            let activeObjs = [];
+            try {
+                if (preMouseDownSelection && preMouseDownSelection.length > 0) {
+                    activeObjs = preMouseDownSelection;
+                } else {
+                    // 使用被标记的对象 (更可靠)
+                    activeObjs = canvas.getObjects().filter(o=>o._wasSelected);
+                    if (!activeObjs || activeObjs.length === 0) {
+                        activeObjs = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
+                    }
+                }
+            } catch(e) { activeObjs = (canvas.getActiveObjects && canvas.getActiveObjects()) || []; }
+            let baseObj = opt.target;
+            if (activeObjs && activeObjs.length > 1 && activeObjs.includes(baseObj)) {
+                activeObjs.forEach(o => {
+                    if (o.data?.type === 'text') {
+                        o.scaleX = 1; o.scaleY = 1; o.fontSize = baseObj.fontSize; o.setCoords();
+                    }
+                });
+                canvas.requestRenderAll();
+                updateFontInput();
+                return;
+            }
+
+            // 原有的 Ctrl+双击功能：按住 Ctrl 时批量调整与基准高度相近的文字
+            if (opt.e.ctrlKey) {
+                let baseHeight = baseObj.height * baseObj.scaleY; // 实际渲染高度
+                let tolerance = baseHeight * 0.2;
+                canvas.getObjects().forEach(obj => {
+                    if (obj.data?.type === 'text') {
+                        let h = obj.height * obj.scaleY;
+                        if (Math.abs(h - baseHeight) <= tolerance) {
+                            obj.scaleX = 1; obj.scaleY = 1; obj.fontSize = baseObj.fontSize; obj.setCoords();
+                        }
+                    }
+                });
+                canvas.requestRenderAll();
+                console.log("Batch resized text similar to height:", baseHeight);
+            }
+        });
+
+        // 记录文本内容修改（当用户完成编辑后触发）
+        try {
+            canvas.on('text:changed', function(event) {
+                if (event.target?.data?.type === 'annotation') updateAnnotationLayerPreview();
+                if (!isRestoringHistory) {
+                    try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                }
+            });
+        } catch(e) {}
+
+        // --- 层级维护 (防止蒙版盖住文字) ---
+        canvas.on('object:modified', event => {
+             // 每次移动或修改后，强制重排层级
+             reorderLayers();
+             if (event.target?.data?.type === 'annotation' || event.target?.type === 'activeSelection') updateAnnotationLayerPreview();
+               try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {}
+        });
+
+           // 记录对象添加与删除以支持 undo
+           canvas.on('object:added', function() { try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {} });
+           canvas.on('object:removed', function() { try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {} });
+    }
+
+    function reorderLayers() {
+        const objects = canvas.getObjects();
+        const backgrounds = objects.filter(obj => !obj.data || obj.data?.type === 'main-image');
+        const masks = objects.filter(obj => ['mask','advanced-mask','advanced-mask-guide'].includes(obj.data?.type));
+        const expertGuides = objects.filter(obj => obj.data?.type === 'expert-guide');
+        const annotations = objects.filter(obj => obj.data?.type === 'annotation');
+        const others = objects.filter(obj => !backgrounds.includes(obj) && !masks.includes(obj) && !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
+        const texts = objects.filter(obj => obj.data?.type === 'text');
+        backgrounds.concat(masks, others, texts, expertGuides, annotations).forEach((obj, index) => canvas.moveTo(obj, index));
+    }
+
+    // ---------- 历史（Undo / Redo）实现 ----------
+    function getPagePayload() {
+        let texts = [];
+        let masks = [];
+        let advancedMasks = [];
+        if (!canvas) return { texts: [], masks: [], advanced_masks: [] };
+        canvas.getObjects().forEach(obj => {
+            if (obj.data?.type === 'text') {
+                texts.push({
+                    id: obj.data.id,
+                    text: obj.text,
+                    x: obj.left, y: obj.top,
+                    fontSize: Math.round((obj.fontSize || 0) * (obj.scaleY || 1)),
+                    color: obj.fill,
+                    rotation: obj.angle || 0 
+                });
+            } else if (obj.data?.type === 'mask') {
+                // 判断形状类型（rect / circle）并传给后端
+                let shapeType = 'rect';
+                if (obj.type === 'circle' || obj.get('shapeType') === 'circle') shapeType = 'circle';
+                masks.push({
+                    id: obj.data.id,
+                    shapeType: shapeType,
+                    color: obj.fill,
+                    opacity: obj.opacity,
+                    x: obj.left, y: obj.top,
+                    w: Math.round(obj.width * (obj.scaleX || 1)),
+                    h: Math.round(obj.height * (obj.scaleY || 1))
+                });
+            } else if (obj.data?.type === 'advanced-mask') {
+                advancedMasks.push({
+                    id: obj.data.id,
+                    assetId: obj.data.assetId,
+                    target: obj.data.target,
+                    overlay: { x: obj.left, y: obj.top, w: obj.getScaledWidth(), h: obj.getScaledHeight() }
+                });
+            }
+        });
+        return { texts: texts, masks: masks, advanced_masks: advancedMasks };
+    }
+
+    function pushHistoryForPage(pageNum) {
+        if (!canvas) return;
+        // 如果正在执行撤销/重做操作，绝对不要记录历史
+        if (isRestoringHistory) return;
+
+        if (!historyMap[pageNum]) historyMap[pageNum] = { undo: [], redo: [] };
+        
+        try {
+            // 获取当前画布状态字符串
+            const snap = JSON.stringify(canvas.toJSON(['data']));
+            
+            // 【新增】去重判断：如果新状态和上一次状态完全一样，不存入
+            const undoStack = historyMap[pageNum].undo;
+            if (undoStack.length > 0) {
+                const lastSnap = undoStack[undoStack.length - 1];
+                if (lastSnap === snap) {
+                    return; // 状态无变化，直接退出
+                }
+            }
+
+            undoStack.push(snap);
+            console.log('History pushed. Page:', pageNum, 'Stack size:', undoStack.length);
+            
+            // 新操作后清空 redo
+            historyMap[pageNum].redo = [];
+        } catch (e) { console.log('pushHistory error', e); }
+    }
+
+    function doUndo() {
+        try {
+            // 使用全局变量 currentPageGlobal 确保页码准确
+            const page = currentPageGlobal; 
+            const h = historyMap[page];
+            
+            // 至少保留1个初始状态，否则画面会空
+            if (!h || h.undo.length <= 1) return; 
+
+            // 弹出当前状态到 redo
+            const current = h.undo.pop();
+            h.redo.push(current);
+
+            // 获取上一个状态
+            const prev = h.undo[h.undo.length - 1];
+            restoreCanvasState(prev);
+            
+            console.log('Undo. New Stack size:', h.undo.length);
+        } catch (e) { console.log('undo error', e); isRestoringHistory = false; }
+    }
+
+    function doRedo() {
+        try {
+            const page = currentPageGlobal;
+            const h = historyMap[page];
+            if (!h || h.redo.length === 0) return;
+
+            // 弹出 redo 到 undo
+            const next = h.redo.pop();
+            h.undo.push(next);
+            
+            restoreCanvasState(next);
+            
+            console.log('Redo. New Stack size:', h.undo.length);
+        } catch (e) { console.log('redo error', e); isRestoringHistory = false; }
+    }
+
+    // 提取公共恢复逻辑
+    function restoreCanvasState(jsonState) {
+        if (!canvas || !jsonState) return;
+        isRestoringHistory = true; // 锁定，防止恢复过程触发 object:added 再次记历史
+
+        canvas.loadFromJSON(jsonState, function() {
+            // === 执法阶段：无论 JSON 里存了什么，都要按现在的规矩办 ===
+
+            canvas.getObjects().forEach(obj => {
+                // 1. 识别背景图（没有 data 标记的视为背景）
+                if (!obj.data) {
+                    try {
+                        obj.set({
+                            selectable: false,
+                            evented: false,
+                            hasControls: false,
+                            lockMovementX: true,
+                            lockMovementY: true,
+                            lockRotation: true,
+                            lockScalingX: true,
+                            lockScalingY: true
+                        });
+                    } catch(err) {}
+                    canvas.sendToBack(obj);
+                }
+                // 2. 蒙版
+                else if (obj.data.type === 'mask' || obj.data.type === 'advanced-mask') {
+                    if (obj.data.type === 'advanced-mask') {
+                        obj.set({ hasControls: false, lockMovementX: true, lockMovementY: true,
+                            lockScalingX: true, lockScalingY: true, lockRotation: true });
+                    }
+                }
+                // 3. 文字
+                else if (obj.data.type === 'text') {
+                    try { canvas.bringToFront(obj); } catch(err) {}
+                }
+            });
+
+            // 再次确保背景在最后
+            const bg = canvas.getObjects().find(o => !o.data);
+            if (bg) canvas.sendToBack(bg);
+
+            // 恢复当前的工具/编辑模式
+            let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+            updateLayerMode(currentMode);
+
+            canvas.renderAll();
+            isRestoringHistory = false; // 解锁
+            console.log('History restored. Rules enforced.');
+        });
+    }
+
+    // --- UI 交互逻辑 ---
+
+    // --- 1. 透明度修改 (修复版) ---
+    const opacitySlider = document.getElementById('opacity-slider');
+    
+    // 'input' 事件：拖动时实时更新视觉，但【绝不】记录历史
+    opacitySlider.addEventListener('input', (e) => {
+        let val = parseInt(e.target.value);
+        currentOpacity = val / 100;
+        document.getElementById('opacity-val').innerText = val + "%";
+        
+        canvas.getObjects().forEach(obj => {
+            if (obj.data?.type === 'mask') {
+                obj.set('opacity', currentOpacity);
+            }
+        });
+        canvas.requestRenderAll();
+    });
+
+    // 'change' 事件：鼠标松开滑块时，只记录【一次】历史
+    opacitySlider.addEventListener('change', (e) => {
+        try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+    });
+
+    // 2. 显示/隐藏文本与高级蒙版
+    document.getElementById('toggle-text').addEventListener('change', (e) => {
+        canvas.getObjects().forEach(obj => {
+            if (obj.data?.type === 'text') obj.visible = e.target.checked;
+        });
+        canvas.requestRenderAll();
+    });
+    function setAdvancedMaskVisibility(visible) {
+        document.getElementById('toggle-advanced-mask').checked = visible;
+        document.getElementById('expert-toggle-advanced-mask').checked = visible;
+        if (!canvas) return;
+        const mode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+        canvas.getObjects().forEach(obj => {
+            if (!['advanced-mask','advanced-mask-guide','expert-guide'].includes(obj.data?.type)) return;
+            obj.set('visible', visible && obj.data?.previewVisible !== false);
+            if (obj.data.type === 'advanced-mask') {
+                obj.selectable = obj.visible && mode === 'mask';
+                obj.evented = obj.selectable;
+            }
+        });
+        if (!visible) canvas.discardActiveObject();
+        syncGenerationPreviewVisibility();
+        canvas.requestRenderAll(); canvas.renderAll();
+    }
+    document.getElementById('toggle-advanced-mask').addEventListener('change', (e) => setAdvancedMaskVisibility(e.target.checked));
+    document.getElementById('expert-toggle-advanced-mask').addEventListener('change', (e) => setAdvancedMaskVisibility(e.target.checked));
+
+    // 3. 编辑模式切换
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => updateLayerMode(e.target.value));
+    });
+
+    // 屏幕上的方向微调按钮已移除，使用键盘箭头或鼠标操作进行微调
+
+    function updateLayerMode(mode) {
+        // 1. 核心逻辑：设置 Canvas 对象的可选性 (保持不变)
+        canvas.discardActiveObject(); 
+        canvas.getObjects().forEach(obj => {
+            if (!obj.data) return; 
+            
+            let isText = obj.data.type === 'text';
+            let isAdvancedMask = obj.data.type === 'advanced-mask';
+            let isMask = obj.data.type === 'mask' || isAdvancedMask;
+            if (isText) obj.visible = document.getElementById('toggle-text').checked;
+            if (isAdvancedMask) obj.visible = document.getElementById('toggle-advanced-mask').checked && obj.data?.previewVisible !== false;
+
+            if (mode === 'all') {
+                obj.selectable = true;
+                obj.evented = true;
+            } else if (mode === 'text') {
+                obj.selectable = isText;
+                obj.evented = isText; 
+            } else if (mode === 'mask') {
+                obj.selectable = isMask;
+                obj.evented = isMask;
+            }
+            if (!obj.visible) { obj.selectable = false; obj.evented = false; }
+        });
+        canvas.requestRenderAll();
+
+        // 2. 更新新建按钮文字 (保持不变)
+        const btn = document.getElementById('create-obj-btn');
+        if (btn) {
+            if (mode === 'mask') {
+                btn.innerText = "➕ 新增蒙版";
+            } else {
+                btn.innerText = "➕ 新增文本"; 
+            }
+        }
+
+        // === 3. [新增功能] 控制形状选项的 变灰/禁用 ===
+        const shapeChoicesDiv = document.getElementById('shape-choices');
+        const shapeInputs = document.querySelectorAll('input[name="new-shape-type"]');
+        
+        if (mode === 'mask') {
+            // 蒙版模式：启用选项
+            if (shapeChoicesDiv) {
+                shapeChoicesDiv.style.opacity = '1';              // 恢复完全不透明
+                shapeChoicesDiv.style.pointerEvents = 'auto';     // 恢复鼠标响应
+            }
+            shapeInputs.forEach(input => input.disabled = false); // 恢复控件可用
+        } else {
+            // 文本模式 (或其他)：禁用选项并变灰
+            if (shapeChoicesDiv) {
+                shapeChoicesDiv.style.opacity = '0.3';            // 变灰
+                shapeChoicesDiv.style.pointerEvents = 'none';     // 禁止鼠标点击
+            }
+            shapeInputs.forEach(input => input.disabled = true);  // 禁用控件
+        }
+
+        // ==========================================
+        // 【修改点】：新增 控制字高卡片 变灰/禁用 逻辑
+        // ==========================================
+        const fontControlGroup = document.getElementById('font-control-group');
+        // 获取字高组内的输入框和按钮
+        const fontGroupInputs = fontControlGroup ? fontControlGroup.querySelectorAll('input, button') : [];
+
+        if (mode === 'mask') {
+            // 蒙版模式：禁用字高调整
+            if (fontControlGroup) {
+                fontControlGroup.style.opacity = '0.3';            // 变灰
+                fontControlGroup.style.pointerEvents = 'none';     // 禁止鼠标点击
+            }
+            fontGroupInputs.forEach(el => el.disabled = true);     // 禁用内部控件
+
+            // 清空当前显示的数值，避免误导
+            const fInput = document.getElementById('font-height-input');
+            if(fInput) fInput.value = '';
+
+        } else {
+            // 文本模式 (或全部)：启用字高调整
+            if (fontControlGroup) {
+                fontControlGroup.style.opacity = '1';              // 恢复不透明
+                fontControlGroup.style.pointerEvents = 'auto';     // 恢复响应
+            }
+            fontGroupInputs.forEach(el => el.disabled = false);    // 启用控件
+
+            // 尝试更新一下当前可能选中的文本字高
+            try { updateFontInput(); } catch(e){}
+        }
+        // ==========================================
+
+        // 4. 切换模式时自动退出绘制状态 (保持不变)
+        isCreatingObject = false;
+        isCreatingAdvancedMask = false;
+        updateCreateBtnStyle();
+        updateAdvancedMaskBtnStyle();
+    }
+
+    // --- 新增函数 ---
+    function setExpertStatus(message, color) {
+        const status = document.getElementById('expert-status');
+        status.innerText = message || '';
+        status.style.color = color || '#888';
+    }
+
+    async function loadExpertModels(selectedModel) {
+        const select = document.getElementById('expert-model');
+        const status = document.getElementById('expert-status');
+        try {
+            const raw = await pywebview.api.get_image_models();
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            select.innerHTML = '';
+            let firstEditable = '';
+            (result.models || []).forEach(item => {
+                const option = document.createElement('option');
+                const textOnly = item.capability === 'text-to-image';
+                option.value = item.id; option.textContent = `${item.model}\uFF08${item.provider || '\u672A\u8BBE\u7F6E'}\uFF09${textOnly ? '\uFF08\u4EC5\u6587\u751F\u56FE\uFF09' : ''}`; option.title = textOnly ? '\u4EC5\u6587\u751F\u56FE?\u4E0D\u80FD\u7528\u4E8E\u4E13\u5BB6\u56FE\u50CF\u4FEE\u6539' : `${item.provider || '\u672A\u8BBE\u7F6E'} \u00B7 ${item.baseurl}`; option.disabled = textOnly; option._modelData = item;
+                if (!textOnly && !firstEditable) firstEditable = item.id;
+                select.appendChild(option);
+            });
+            const preferredModel = selectedModel || result.current_model;
+            if (preferredModel && Array.from(select.options).some(option => option.value === preferredModel && !option.disabled)) select.value = preferredModel;
+            else if (firstEditable) select.value = firstEditable;
+            if (select.value && select.value !== result.current_model) await setCurrentExpertModel(select.value, false);
+            updateOutputSizeControlsForModel(select.value);
+            status.innerText = firstEditable ? '' : '请添加支持图像修改的模型';
+        } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    async function setCurrentExpertModel(model, showStatus=true) {
+        if (!model) return;
+        const raw = await pywebview.api.set_current_image_model(model);
+        const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (result?.error) throw new Error(result.error);
+        if (showStatus) setExpertStatus(`当前模型：${model}`, '#4ec9b0');
+    }
+    document.getElementById('expert-model').addEventListener('change', async event => {
+        updateOutputSizeControlsForModel(event.target.value);
+        try { await setCurrentExpertModel(event.target.value); }
+        catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    });
+    document.querySelectorAll('input[name="expert-output-size"], #expert-output-width, #expert-output-height, #expert-aspect-ratio').forEach(control => {
+        control.addEventListener('input', () => updateExpertSizeWarning());
+        control.addEventListener('change', () => updateExpertSizeWarning());
+    });
+
+    function enterExpertMode() {
+        if (!canvas) return;
+        expertMode = true;
+        const sidebar = document.getElementById('sidebar');
+        Array.from(sidebar.children).forEach(child => { if (child.id !== 'expert-panel') { child.dataset.expertDisplay = child.style.display; child.style.display = 'none'; } });
+        document.getElementById('expert-panel').style.display = 'block';
+        document.getElementById('expert-toggle-advanced-mask').checked = document.getElementById('toggle-advanced-mask').checked;
+        loadExpertModels();
+    }
+
+    function exitExpertMode() {
+        expertMode = false; expertSelecting = false;
+        clearExpertSelection();
+        const sidebar = document.getElementById('sidebar');
+        Array.from(sidebar.children).forEach(child => { if (child.id !== 'expert-panel') child.style.display = child.dataset.expertDisplay || ''; });
+        document.getElementById('expert-panel').style.display = 'none';
+        canvas.defaultCursor = 'default'; canvas.selection = true;
+        updateLayerMode(document.querySelector('input[name="mode"]:checked')?.value || 'text');
+        canvas.requestRenderAll();
+    }
+
+    function toggleExpertModelForm(edit=false) {
+        const form = document.getElementById('expert-model-form');
+        if (edit) {
+            const option = Array.from(document.getElementById('expert-model').options).find(item => item.value === document.getElementById('expert-model').value);
+            if (!option?._modelData) return;
+            const model = option._modelData;
+            document.getElementById('expert-model-name').value = model.model;
+            document.getElementById('expert-provider').value = model.provider || '\u672a\u8bbe\u7f6e';
+            document.getElementById('expert-baseurl').value = model.baseurl || '';
+            document.getElementById('expert-key').value = '';
+            form.dataset.editingModel = model.id;
+            document.getElementById('expert-model-save').innerText = '\u4fdd\u5b58\u4fee\u6539\uff08Key \u7559\u7a7a\u4fdd\u6301\u539f\u503c\uff09';
+        } else {
+            ['expert-baseurl','expert-key','expert-model-name','expert-provider'].forEach(id => document.getElementById(id).value = '');
+            form.dataset.editingModel = '';
+            document.getElementById('expert-model-save').innerText = '\u4fdd\u5b58\u6a21\u578b';
+        }
+        form.style.display = 'block';
+    }
+
+    async function saveExpertModel() {
+        const status = document.getElementById('expert-status');
+        try {
+            const baseurl = document.getElementById('expert-baseurl').value.trim();
+            const key = document.getElementById('expert-key').value.trim();
+            const model = document.getElementById('expert-model-name').value.trim();
+            const provider = document.getElementById('expert-provider').value.trim();
+            const editingModel = document.getElementById('expert-model-form').dataset.editingModel || '';
+            const raw = editingModel ? await pywebview.api.update_image_model(editingModel, baseurl, key, model, provider) : await pywebview.api.add_image_model(baseurl, key, model, provider);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            document.getElementById('expert-model-form').style.display = 'none';
+            await loadExpertModels(result.models?.find(item => item.model === model && item.provider === provider)?.id || model); setExpertStatus(`\u6a21\u578b\u5df2\u4fdd\u5b58\uff1a${model}`, '#4ec9b0');
+        } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    async function removeExpertModel() {
+        const model = document.getElementById('expert-model').value;
+        if (!model || !window.confirm(`删除模型“${model}”？`)) return;
+        const status = document.getElementById('expert-status');
+        try {
+            const raw = await pywebview.api.delete_image_model(model);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            await loadExpertModels(); setExpertStatus(`模型已删除：${model}`, '#4ec9b0');
+        } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    function expertSelectionMode() {
+        return document.querySelector('input[name="expert-selection-mode"]:checked')?.value || 'rect';
+    }
+
+    function expertSelectionGuides() {
+        return expertRectGuides.concat(expertBrushPaths).filter(guide => guide.canvas);
+    }
+
+    function expertSelectionSummary() {
+        const parts = [];
+        if (expertRectGuides.length) parts.push(`${expertRectGuides.length} 个框选`);
+        if (expertBrushPaths.length) parts.push(`${expertBrushPaths.length} 笔涂抹`);
+        return parts.join('、');
+    }
+
+    function updateExpertBrushSize(value) {
+        const size = Math.max(4, Math.min(160, Number(value) || 32));
+        document.getElementById('expert-brush-size-value').innerText = Math.round(size);
+        if (canvas?.freeDrawingBrush) canvas.freeDrawingBrush.width = size;
+    }
+
+    function updateExpertSelectionControls() {
+        const brush = expertSelectionMode() === 'brush';
+        const hasSelection = expertSelectionGuides().length > 0;
+        document.getElementById('expert-brush-size-row').style.display = brush ? 'block' : 'none';
+        document.getElementById('expert-select-region').innerText = expertSelectionActive || hasSelection ? '清空蒙版' : '绘制蒙版';
+        const status = document.getElementById('expert-scope-status');
+        if (expertEditScope() === 'full') {
+            if (hasSelection) status.innerText = `整张修改蒙版：${expertSelectionSummary()}；蒙版总尺寸与主图一致，仅透明选区允许模型修改`;
+            else if (expertSelectionActive) status.innerText = brush ? '整张修改：按住鼠标涂抹可编辑区域' : '整张修改：拖动框选可编辑区域';
+            else status.innerText = `整张修改：未绘制蒙版时全图可修改；输出尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}`;
+        } else if (hasSelection) status.innerText = `组合蒙版：${expertSelectionSummary()}；可切换工具继续添加`;
+        else if (expertSelectionActive) status.innerText = brush ? '按住鼠标涂抹，可绘制多笔或切换为框选' : '拖动框选，可连续绘制或切换为涂抹';
+        else status.innerText = '局部修改：请先绘制蒙版';
+    }
+
+    function activateExpertSelectionTool() {
+        if (!canvas || !expertSelectionActive) return;
+        canvas.discardActiveObject(); canvas.selection = false;
+        if (expertSelectionMode() === 'brush') {
+            expertSelecting = false;
+            canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+            canvas.freeDrawingBrush.color = 'rgba(74,163,223,.72)';
+            canvas.freeDrawingBrush.width = Number(document.getElementById('expert-brush-size').value) || 32;
+            canvas.isDrawingMode = true;
+        } else {
+            canvas.isDrawingMode = false; expertSelecting = true; canvas.defaultCursor = 'crosshair';
+        }
+        updateExpertSelectionControls(); canvas.requestRenderAll();
+    }
+
+    function stopExpertSelectionDrawing() {
+        if (!canvas) return;
+        canvas.isDrawingMode = false; expertSelecting = false; expertSelectionActive = false;
+        canvas.selection = true; canvas.defaultCursor = 'default';
+    }
+
+    function clearExpertSelection() {
+        if (!canvas) return;
+        stopExpertSelectionDrawing();
+        if (drawingObject?.data?.type === 'expert-guide') { canvas.remove(drawingObject); drawingObject = null; }
+        if (expertGuide?.canvas) canvas.remove(expertGuide);
+        expertGuide = null;
+        expertSelectionGuides().forEach(guide => { if (guide.canvas) canvas.remove(guide); });
+        expertRectGuides = []; expertBrushPaths = [];
+        removeExpertSelectionPreviewCard();
+        updateExpertSelectionControls(); canvas.requestRenderAll();
+    }
+
+    function updateExpertSelectionMode() {
+        if (!canvas || expertBusy) return;
+        if (expertSelectionActive) activateExpertSelectionTool();
+        else updateExpertSelectionControls();
+    }
+
+    function exportExpertSelectionMask() {
+        const guides = expertSelectionGuides();
+        if (!guides.length) return null;
+        const boundsList = guides.map(guide => guide.getBoundingRect(true, true));
+        const x1 = Math.max(0, Math.min(...boundsList.map(item => item.left)));
+        const y1 = Math.max(0, Math.min(...boundsList.map(item => item.top)));
+        const x2 = Math.min(canvas.originalWidth, Math.max(...boundsList.map(item => item.left + item.width)));
+        const y2 = Math.min(canvas.originalHeight, Math.max(...boundsList.map(item => item.top + item.height)));
+        if (x2 - x1 < 2 || y2 - y1 < 2) return null;
+
+        const states = canvas.getObjects().map(obj => ({obj,visible:obj.visible,stroke:obj.stroke,fill:obj.fill,opacity:obj.opacity,shadow:obj.shadow}));
+        const backgroundColor = canvas.backgroundColor;
+        const dimensions = {width:canvas.getWidth(),height:canvas.getHeight()};
+        const viewport = canvas.viewportTransform.slice();
+        states.forEach(state => {
+            if (!guides.includes(state.obj)) state.obj.set('visible', false);
+            else if (state.obj.type === 'path') state.obj.set({visible:true,stroke:'#ffffff',fill:null,opacity:1,shadow:null});
+            else state.obj.set({visible:true,stroke:'#ffffff',fill:'#ffffff',opacity:1,shadow:null});
+        });
+        canvas.backgroundColor = 'rgba(0,0,0,0)';
+        canvas.setDimensions({width:canvas.originalWidth,height:canvas.originalHeight});
+        canvas.setViewportTransform([1,0,0,1,0,0]); canvas.renderAll();
+        const maskData = canvas.toDataURL({format:'png',left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,multiplier:1});
+        states.forEach(state => state.obj.set({visible:state.visible,stroke:state.stroke,fill:state.fill,opacity:state.opacity,shadow:state.shadow}));
+        canvas.backgroundColor = backgroundColor; canvas.setDimensions(dimensions); canvas.setViewportTransform(viewport); canvas.renderAll();
+        return {bounds:{x:x1,y:y1,w:x2-x1,h:y2-y1},maskData,guides};
+    }
+
+    function removeExpertSelectionPreviewCard() {
+        const previewId = 'expert-selection-mask';
+        const entry = generationPreviewObjects.get(previewId);
+        if (!entry) return;
+        entry.card.remove();
+        generationPreviewObjects.delete(previewId);
+        if (selectedPreviewId === previewId) {
+            selectedPreviewId = null;
+            document.getElementById('preview-selection-toolbar').hidden = true;
+            canvas?.discardActiveObject();
+        }
+    }
+
+    function refreshExpertSelectionPreview() {
+        const payload = exportExpertSelectionMask();
+        if (!payload) {
+            removeExpertSelectionPreviewCard();
+            return null;
+        }
+        addGenerationPreview(
+            {id:'expert-selection-mask', imageData:payload.maskData, overlay:{x:0,y:0,w:canvas.originalWidth,h:canvas.originalHeight}},
+            payload.guides,
+            false,
+            {previewId:'expert-selection-mask', label:`编辑蒙版 ${canvas.originalWidth}×${canvas.originalHeight}`, isSelectionMask:true}
+        );
+        return payload;
+    }
+
+    function exportCurrentCompositeImage() {
+        if (!canvas) return null;
+        const hiddenTypes = new Set(['advanced-mask-guide', 'expert-guide']);
+        const states = canvas.getObjects().map(obj => ({obj, visible:obj.visible}));
+        const backgroundColor = canvas.backgroundColor;
+        const dimensions = {width:canvas.getWidth(), height:canvas.getHeight()};
+        const viewport = canvas.viewportTransform.slice();
+        states.forEach(state => {
+            const data = state.obj.data || {};
+            if (hiddenTypes.has(data.type)) state.obj.set('visible', false);
+        });
+        canvas.backgroundColor = 'rgba(0,0,0,0)';
+        canvas.setDimensions({width:canvas.originalWidth, height:canvas.originalHeight});
+        canvas.setViewportTransform([1,0,0,1,0,0]);
+        canvas.renderAll();
+        const imageData = canvas.toDataURL({format:'png', left:0, top:0, width:canvas.originalWidth, height:canvas.originalHeight, multiplier:1});
+        states.forEach(state => state.obj.set('visible', state.visible));
+        canvas.backgroundColor = backgroundColor;
+        canvas.setDimensions(dimensions);
+        canvas.setViewportTransform(viewport);
+        canvas.renderAll();
+        return imageData;
+    }
+
+    function finishExpertGuideGeneration(guides) {
+        const persistentGuides = new Set(expertSelectionGuides());
+        (guides || []).forEach(guide => {
+            stopAdvancedGuideBreathing(guide);
+            if (persistentGuides.has(guide)) guide.set({stroke:'#4aa3df',opacity:.72});
+            else if (guide.canvas) canvas.remove(guide);
+        });
+        expertGeneratingGuides = [];
+        expertSelectionActive = false;
+        updateExpertSelectionControls();
+        syncGenerationPreviewVisibility();
+    }
+
+    function startExpertSelection() {
+        if (!canvas || expertBusy) return;
+        if (expertSelectionActive || expertSelectionGuides().length) { clearExpertSelection(); return; }
+        expertSelectionActive = true; activateExpertSelectionTool();
+    }
+    async function submitExpertEdit() {
+        if (expertBusy) { await cancelExpertEdit(); return; }
+        if (!canvas) return;
+        let prompt = document.getElementById('expert-prompt').value.trim();
+        const model = document.getElementById('expert-model').value;
+        if (!model) { setExpertStatus('请选择模型', '#f48771'); return; }
+        if (!prompt) { setExpertStatus(`模型：${model} · 请输入修改描述`, '#f48771'); return; }
+        stopExpertSelectionDrawing();
+        const isFullImage = expertEditScope() === 'full';
+        const selectionPayload = refreshExpertSelectionPreview();
+        if (!isFullImage && !selectionPayload) { setExpertStatus('局部修改请先绘制蒙版', '#f48771'); return; }
+        const outputOptions = isFullImage ? getExpertGenerationOptions(model) : {width:null, height:null, imageSize:null, aspectRatio:null};
+        if (isFullImage && isGptImage2Model(model) && Math.max(outputOptions.width || 0, outputOptions.height || 0) > 2048) {
+            updateExpertSizeWarning(model);
+            const proceed = window.confirm(`GPT Image 2 当前设置为 ${outputOptions.width}×${outputOptions.height}，长边超过 2048。
+
+部分中转接口在 2K 以外可能出现异常生成。是否仍然继续？`);
+            if (!proceed) {
+                setExpertStatus('已取消生成：请将 GPT Image 2 长边设置为 2048 以内', '#dcdcaa');
+                return;
+            }
+        }
+        let selectionMask = selectionPayload?.maskData || null;
+        const sourceImage = exportCurrentCompositeImage();
+        let bounds, guides;
+        if (isFullImage) {
+            bounds = {x:0,y:0,w:canvas.originalWidth,h:canvas.originalHeight};
+            if (selectionPayload) guides = selectionPayload.guides;
+            else {
+                const guide = new fabric.Rect({left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,fill:'rgba(0,92,68,.14)',stroke:'#00d394',strokeWidth:3,selectable:false,evented:false,data:{type:'expert-guide'}});
+                canvas.add(guide);
+                guides = [guide];
+            }
+        } else if (selectionPayload) {
+            bounds = selectionPayload.bounds; guides = selectionPayload.guides;
+        }
+        expertGeneratingGuides = guides.slice();
+        expertBusy = true; expertJobId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        document.getElementById('expert-submit').innerText = '终止生成';
+        guides.forEach(guide => { guide.set({stroke:'#00d394',opacity:1}); startAdvancedGuideBreathing(guide); });
+        setExpertStatus(`模型：${model} · 正在生成图片...`, '#dcdcaa'); canvas.requestRenderAll();
+        const jobId = expertJobId;
+        try {
+            const raw = await pywebview.api.expert_edit_image(bounds.x,bounds.y,bounds.w,bounds.h,prompt,model,jobId,selectionMask,sourceImage,outputOptions.width,outputOptions.height,expertReferenceImages,outputOptions.imageSize,outputOptions.aspectRatio,isFullImage);
+            if (!expertBusy || expertJobId !== jobId) return;
+            let result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error === 'size_mismatch') {
+                const choice = await requestSizeMismatchChoice(result);
+                if (choice === 'abandon') throw new Error('已放弃本次尺寸不一致的生成结果');
+                if (choice === 'resize') {
+                    const resizedRaw = await pywebview.api.resize_image_data(
+                        result.rawImageData || result.imageData,
+                        result.requested.width,
+                        result.requested.height,
+                        isFullImage ? null : sourceImage,
+                        isFullImage ? null : selectionMask
+                    );
+                    const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
+                    if (resized?.error) throw new Error(resized.error);
+                    result.imageData = resized.imageData;
+                    result.overlay = {x:0, y:0, w:resized.width, h:resized.height};
+                    result.maskProtected = resized.maskProtected;
+                    result.sizeDecision = 'resize';
+                } else {
+                    result.overlay = {x:0, y:0, w:result.actual.width, h:result.actual.height};
+                    result.maskProtected = Boolean(result.hasSelectionMask);
+                    result.sizeDecision = 'actual';
+                }
+                delete result.error;
+            }
+            if (!result || result.error) throw new Error(result?.message || result?.error || '生成失败');
+            await new Promise((resolve, reject) => fabric.Image.fromURL(result.imageData, img => {
+                if (!img) { reject(new Error('返回图像加载失败')); return; }
+                finishExpertGuideGeneration(guides);
+                img.set({left:result.overlay.x,top:result.overlay.y,scaleX:result.overlay.w/img.width,scaleY:result.overlay.h/img.height,
+                    selectable:true,evented:true,hasControls:false,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
+                    data:{type:'advanced-mask',id:result.id,assetId:result.assetId,target:result.target,previewVisible:true,isFullImage:isFullImage}});
+                img.set('visible', document.getElementById('toggle-advanced-mask').checked);
+                canvas.add(img);
+                addGenerationPreview(result, img, isFullImage);
+                reorderLayers();
+                canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); resolve();
+            }));
+            const sizeDecisionText = result.sizeDecision === 'resize' ? '（已强制缩放）' : result.sizeDecision === 'actual' ? '（采用返回尺寸）' : '';
+            const maskProtectionText = result.maskProtected ? '，蒙版外已保护' : '';
+            const submittedModelLabel = result.submittedModel ? `${result.submittedModel}（${result.submittedProvider || '未设置'}）` : model;
+            setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${sizeDecisionText}${maskProtectionText}，尺寸 ${result.overlay.w}×${result.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成`, '#4ec9b0');
+        } catch (error) {
+            finishExpertGuideGeneration(guides);
+            setExpertStatus(`模型：${model} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();
+        } finally {
+            if (expertJobId === jobId) { expertBusy = false; expertJobId = null; document.getElementById('expert-submit').innerText = '生成图片'; }
+        }
+    }
+
+    async function cancelExpertEdit() {
+        if (!expertBusy) return;
+        const jobId = expertJobId;
+        expertBusy = false; expertJobId = null;
+        finishExpertGuideGeneration(expertGeneratingGuides);
+        document.getElementById('expert-submit').innerText = '生成图片';
+        setExpertStatus('修改已终止', '#dcdcaa'); canvas.requestRenderAll();
+        try { await pywebview.api.cancel_expert_edit(jobId); } catch (_) { /* The local result is already ignored. */ }
+    }
+    function toggleCreateMode() {
+        isCreatingObject = !isCreatingObject;
+        // 进入绘制模式时，关闭取色和填充模式
+        if (isCreatingObject) {
+            isCreatingAdvancedMask = false;
+            updateAdvancedMaskBtnStyle();
+            isPickingColor = false;
+            isPaintBucketMode = false;
+            updateToolButtonStates(); // 更新其他按钮样式
+            canvas.defaultCursor = 'crosshair';
+            canvas.selection = false; // 禁止框选
+            // 锁定所有对象，防止误触
+            canvas.getObjects().forEach(o => o.evented = false);
+        } else {
+            canvas.defaultCursor = 'default';
+            canvas.selection = true;
+            // 恢复对象可交互性
+            let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+            updateLayerMode(currentMode);
+        }
+        updateCreateBtnStyle();
+    }
+
+    function toggleAdvancedMaskMode(forceState) {
+        if (!canvas) return;
+        if (advancedMaskJobs.size > 0 && forceState !== true) {
+            cancelAdvancedMaskJobs();
+            return;
+        }
+        isCreatingAdvancedMask = typeof forceState === 'boolean' ? forceState : !isCreatingAdvancedMask;
+        if (isCreatingAdvancedMask) {
+            isCreatingObject = false;
+            updateCreateBtnStyle();
+            isPickingColor = false;
+            isPaintBucketMode = false;
+            canvas.defaultCursor = 'crosshair';
+            canvas.selection = false;
+            canvas.getObjects().forEach(o => o.evented = false);
+        } else {
+            canvas.defaultCursor = 'default';
+            canvas.selection = true;
+            updateLayerMode(document.querySelector('input[name="mode"]:checked')?.value || 'text');
+        }
+        updateAdvancedMaskBtnStyle();
+    }
+
+    function updateAdvancedMaskBtnStyle() {
+        const btn = document.getElementById('advanced-mask-btn');
+        const hint = document.getElementById('create-hint');
+        if (!btn || !hint) return;
+        const active = isCreatingAdvancedMask || advancedMaskJobs.size > 0;
+        btn.style.background = active ? '#064d39' : '#333';
+        btn.style.border = active ? '2px solid #00d394' : '1px solid #555';
+        btn.style.boxShadow = active ? '0 0 10px rgba(0,211,148,.38)' : 'none';
+        btn.innerText = advancedMaskJobs.size > 0 ? `生成中（${advancedMaskJobs.size}）` : '高级蒙版';
+        hint.style.color = active ? '#4ec9b0' : '#888';
+        if (isCreatingAdvancedMask && advancedMaskJobs.size === 0) hint.innerText = '请框选需要去除的原文字区域；再次点击可取消';
+    }
+
+    function restoreAfterAdvancedMaskTasks() {
+        if (advancedMaskJobs.size > 0) { updateAdvancedMaskBtnStyle(); return; }
+        isCreatingAdvancedMask = false;
+        canvas.defaultCursor = 'default';
+        canvas.selection = true;
+        updateLayerMode(document.querySelector('input[name="mode"]:checked')?.value || 'text');
+        updateAdvancedMaskBtnStyle();
+    }
+
+    function cancelAdvancedMaskJobs() {
+        advancedMaskJobs.forEach(job => {
+            job.cancelled = true;
+            stopAdvancedGuideBreathing(job.guide);
+            if (job.guide.canvas) canvas.remove(job.guide);
+        });
+        advancedMaskJobs.clear();
+        if (drawingObject?.data?.type === 'advanced-mask-guide') {
+            canvas.remove(drawingObject);
+            drawingObject = null;
+        }
+        isCreatingAdvancedMask = false;
+        restoreAfterAdvancedMaskTasks();
+        const hint = document.getElementById('create-hint');
+        hint.style.color = '#d7ba7d';
+        hint.innerText = '已终止未完成的高级蒙版';
+        canvas.requestRenderAll();
+    }
+
+    function startAdvancedGuideBreathing(guide) {
+        guide.data.generating = true;
+        guide.data.startedAt = Date.now();
+        const tick = () => {
+            if (!guide.canvas || !guide.data?.generating) return;
+            const phase = ((Date.now() - guide.data.startedAt) % 1400) / 1400;
+            guide.set('opacity', 0.35 + 0.63 * ((Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2));
+            canvas.requestRenderAll();
+            requestAnimationFrame(tick);
+        };
+        tick();
+    }
+
+    function stopAdvancedGuideBreathing(guide) {
+        if (guide.data) guide.data.generating = false;
+        guide.set('opacity', 1);
+    }
+
+    async function generateAdvancedMaskFromGuide(guide) {
+        const hint = document.getElementById('create-hint');
+        const bounds = { x: guide.left, y: guide.top, w: guide.getScaledWidth(), h: guide.getScaledHeight() };
+        const job = { id: ++advancedMaskJobId, guide: guide, cancelled: false };
+        advancedMaskJobs.set(job.id, job);
+        startAdvancedGuideBreathing(guide);
+        updateAdvancedMaskBtnStyle();
+        canvas.requestRenderAll();
+        hint.style.color = '#dcdcaa';
+        hint.innerText = '正在生成；可继续框选，点击按钮可终止全部';
+        try {
+            const raw = await pywebview.api.generate_advanced_mask(bounds.x, bounds.y, bounds.w, bounds.h);
+            if (job.cancelled || !advancedMaskJobs.has(job.id)) return;
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (!result || result.error) throw new Error(result?.error || '生成失败');
+            fabric.Image.fromURL(result.imageData, function(img) {
+                if (job.cancelled || !advancedMaskJobs.has(job.id)) return;
+                stopAdvancedGuideBreathing(guide);
+                canvas.remove(guide);
+                img.set({
+                    left: result.overlay.x, top: result.overlay.y,
+                    scaleX: result.overlay.w / img.width, scaleY: result.overlay.h / img.height,
+                    selectable: true, evented: true, hasControls: false,
+                    lockMovementX: true, lockMovementY: true,
+                    lockScalingX: true, lockScalingY: true, lockRotation: true,
+                    data: { type: 'advanced-mask', id: result.id, assetId: result.assetId, target: result.target }
+                });
+                const showAdvanced = document.getElementById('toggle-advanced-mask').checked;
+                const mode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
+                img.visible = showAdvanced;
+                img.selectable = showAdvanced && mode === 'mask';
+                img.evented = img.selectable;
+                canvas.add(img);
+                addGenerationPreview(result, img, false);
+                reorderLayers();
+                canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal);
+                advancedMaskJobs.delete(job.id);
+                const remaining = advancedMaskJobs.size;
+                hint.style.color = '#4ec9b0';
+                hint.innerText = remaining ? `还有 ${remaining} 个高级蒙版正在生成` : '全部高级蒙版已生成';
+                restoreAfterAdvancedMaskTasks();
+            });
+        } catch (error) {
+            if (job.cancelled || !advancedMaskJobs.has(job.id)) return;
+            advancedMaskJobs.delete(job.id);
+            stopAdvancedGuideBreathing(guide);
+            guide.set({stroke:'#f48771', fill:'rgba(120,28,28,0.42)'});
+            hint.style.color = '#f48771';
+            hint.innerText = '某个高级蒙版生成失败';
+            restoreAfterAdvancedMaskTasks();
+            setTimeout(() => { if (guide.canvas) { canvas.remove(guide); canvas.requestRenderAll(); } }, 2400);
+        }
+    }
+
+    function updateCreateBtnStyle() {
+        const btn = document.getElementById('create-obj-btn');
+        const hint = document.getElementById('create-hint');
+        if (isCreatingObject) {
+            btn.style.background = '#0e639c';
+            btn.style.border = '1px solid #0e639c';
+            // 激活状态提示
+            hint.style.color = '#4ec9b0';
+            hint.innerText = "已进入绘制模式，请在画布操作...";
+        } else {
+            btn.style.background = '#333';
+            btn.style.border = '1px dashed #666';
+            // 默认提示
+            hint.style.color = '#888';
+            hint.innerText = "点击按钮开始绘制，再次点击取消";
+        }
+    }
+
+    // 4. 保存数据
+    function saveData() {
+        const payload = getPagePayload();
+
+        // 【新增位置 2】: 获取复选框状态
+        const saveAsOpaque = document.getElementById('save-opaque-check').checked;
+
+        // 【修改点】: 获取当前滑块的透明度值 (0.0 - 1.0) 作为全局透明度基准
+        const globalOpacity = parseInt(document.getElementById('opacity-slider').value) / 100;
+
+        // 调用后端时传入三个参数: 数据 JSON, 是否强制不透明, 全局透明度
+        pywebview.api.save_changes(JSON.stringify(payload), saveAsOpaque, globalOpacity).then(response => {
+            try {
+                // Web 模式：检测 JSON 响应
+                if (window.isWebMode && typeof response === 'string' && response.startsWith('{')) {
+                    const result = JSON.parse(response);
+                    if (result.success && result.download_url) {
+                        // 自动下载
+                        const a = document.createElement('a');
+                        a.href = result.download_url;
+                        a.download = '';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        alert('保存成功！文件已开始下载。');
+                    } else if (result.error) {
+                        alert('保存失败: ' + result.error);
+                    }
+                    return;
+                }
+                
+                // Desktop 模式：原有逻辑
+                if (response === 'OK') {
+                    alert('保存成功！');
+                } else if (response === 'CANCEL') {
+                    // 用户取消保存，不提示成功
+                    console.log('保存已取消');
+                } else {
+                    alert('保存失败: ' + response);
+                }
+            } catch(e) { console.log('save callback err', e); }
+        }).catch(e => { alert('保存失败: ' + e); });
+    }
+
+    // The integrated app executes this script inside initEditPage(). Keep the
+    // original inline button handlers and page reload hooks globally reachable.
+    window.openFile = openFile;
+    window.saveData = saveData;
+    window.toggleCreateMode = toggleCreateMode;
+    window.toggleAdvancedMaskMode = toggleAdvancedMaskMode;
+    window.enterExpertMode = enterExpertMode;
+    window.exitExpertMode = exitExpertMode;
+    window.toggleExpertModelForm = toggleExpertModelForm;
+    window.saveExpertModel = saveExpertModel;
+    window.removeExpertModel = removeExpertModel;
+    window.startExpertSelection = startExpertSelection;
+    window.updateExpertSelectionMode = updateExpertSelectionMode;
+    window.updateExpertBrushSize = updateExpertBrushSize;
+    window.handleReferenceImage = handleReferenceImage;
+    window.updateExpertEditScope = updateExpertEditScope;
+    window.setAnnotationColor = setAnnotationColor;
+    window.deleteSelectedPreviewLayer = deleteSelectedPreviewLayer;
+    window.setSelectedLayerAsMain = setSelectedLayerAsMain;
+    window.startAnnotationBrush = startAnnotationBrush;
+    window.addAnnotationText = addAnnotationText;
+    window.toggleAnnotationMarker = toggleAnnotationMarker;
+    window.submitExpertEdit = submitExpertEdit;
+    window.changePage = changePage;
+    window.initCanvas = initCanvas;
+
+    // Standalone image-editor entry points.
+    expertMode = true;
+    const ROOMSPACE_SRCDOC = "";
+    function setNavActive(view) {
+        document.querySelectorAll('#imgedit-toolbar .imgedit-nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+    }
+    function getThemePreference() {
+        try { return localStorage.getItem('imgedit-theme') || 'dark'; } catch (_) { return 'dark'; }
+    }
+    function setThemePreference(theme) {
+        try { localStorage.setItem('imgedit-theme', theme); } catch (_) {}
+        try { pywebview.api.set_theme(theme); } catch (_) {}
+    }
+    let currentTheme = getThemePreference();
+    function getCanvasThemeColor() {
+        return document.body.dataset.theme === 'light' ? '#dfe4df' : '#524f4f';
+    }
+    function applyCanvasTheme() {
+        if (canvas) {
+            try {
+                canvas.backgroundColor = getCanvasThemeColor();
+                canvas.requestRenderAll();
+            } catch (_) {}
+        }
+    }
+    function applyTheme(theme, persist = true) {
+        currentTheme = theme;
+        document.body.dataset.theme = theme;
+        if (persist) setThemePreference(theme);
+        applyCanvasTheme();
+        const frame = document.getElementById('roomspace-frame');
+        if (frame && frame.contentWindow && frame.getAttribute('srcdoc')) {
+            frame.contentWindow.postMessage({ type: 'roomspace-theme', theme }, '*');
+        }
+    }
+    function toggleTheme() {
+        applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    }
+    async function loadThemeFromBackend() {
+        try {
+            const raw = await pywebview.api.get_theme();
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result && result.theme && result.theme !== currentTheme) applyTheme(result.theme, false);
+        } catch (_) {}
+    }
+    function focusRoomspace() {
+        document.body.classList.add('roomspace-mode');
+        setNavActive('roomspace');
+        const frame = document.getElementById('roomspace-frame');
+        if (frame && !frame.getAttribute('srcdoc')) {
+            if (ROOMSPACE_SRCDOC) frame.srcdoc = ROOMSPACE_SRCDOC;
+            else frame.src = 'roomspace.html';
+        }
+    }
+    function focusImageAdjust() {
+        document.body.classList.remove('roomspace-mode');
+        setNavActive('image');
+        loadExpertModels();
+        document.getElementById('expert-prompt')?.focus();
+    }
+    async function openImageFromDataUrl(imageData, width, height) {
+        document.body.classList.remove('roomspace-mode');
+        setNavActive('image');
+        try {
+            const raw = await pywebview.api.open_image_data(imageData);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            initCanvas(result);
+            setExpertStatus(`已从空间设计导入 ${width}×${height} 图片`, '#4ec9b0');
+        } catch (error) {
+            setExpertStatus(error.message || String(error), '#f48771');
+        }
+    }
+    async function saveRoomspaceModels(requestId, models) {
+        let ok = false;
+        let error = '';
+        try {
+            const raw = await pywebview.api.save_roomspace_models(JSON.stringify(models));
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            ok = true;
+        } catch (e) {
+            error = e.message || String(e);
+        }
+        const frame = document.getElementById('roomspace-frame');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type: 'roomspace-save-models-result', id: requestId, ok, error }, '*');
+        }
+    }
+    window.addEventListener('message', event => {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'roomspace-export') {
+            openImageFromDataUrl(data.imageData, data.width, data.height);
+        } else if (data.type === 'roomspace-save-models') {
+            saveRoomspaceModels(data.id, data.models);
+        } else if (data.type === 'roomspace-ready') {
+            if (event.source) {
+                event.source.postMessage({ type: 'roomspace-theme', theme: currentTheme }, '*');
+            }
+        }
+    });
+    function showHelp() {
+        alert('先打开图片，在画布上绘制框选或涂抹蒙版，填写修改描述后点击“生成图片”。');
+    }
+    async function openImageFile() {
+        try {
+            const raw = await pywebview.api.open_image();
+            const result = JSON.parse(raw);
+            if (!result.cancelled) initCanvas(result);
+        } catch (error) {
+            setExpertStatus(error.message || String(error), '#f48771');
+        }
+    }
+    function requestSizeMismatchChoice(result) {
+        const requested = result.requested || {};
+        const actual = result.actual || {};
+        const requestedRatio = Number(requested.width) / Math.max(1, Number(requested.height));
+        const actualRatio = Number(actual.width) / Math.max(1, Number(actual.height));
+        const ratioError = Math.abs(actualRatio / Math.max(0.0001, requestedRatio) - 1);
+        const recommendedChoice = ratioError <= 0.01 ? 'resize' : 'abandon';
+        const values = document.getElementById('size-mismatch-values');
+        values.innerHTML = `要求尺寸：<b>${requested.width || 0}×${requested.height || 0}</b><br>返回尺寸：<b>${actual.width || 0}×${actual.height || 0}</b><br>宽高比差异：<b>${(ratioError * 100).toFixed(2)}%</b>`;
+        const recommendation = document.getElementById('size-mismatch-recommendation');
+        recommendation.innerText = recommendedChoice === 'resize'
+            ? `${result.hasSelectionMask ? '已检测到蒙版，' : ''}宽高比差异不超过 1%，建议强制缩放到设置尺寸后重新按蒙版合成。`
+            : `${result.hasSelectionMask ? '已检测到蒙版，' : ''}宽高比差异超过 1%，强制缩放可能造成拉伸，建议放弃并重新生成。`;
+        const labels = {actual:'使用返回尺寸', resize:'强制缩放一致', abandon:'放弃'};
+        Object.entries(labels).forEach(([choice, label]) => {
+            const button = document.getElementById(`size-mismatch-${choice}`);
+            button.classList.toggle('is-recommended', choice === recommendedChoice);
+            button.innerText = choice === recommendedChoice ? `${label}（推荐）` : label;
+        });
+        document.getElementById('size-mismatch-dialog').hidden = false;
+        return new Promise(resolve => { sizeMismatchResolver = resolve; });
+    }
+
+    function resolveSizeMismatchChoice(choice) {
+        document.getElementById('size-mismatch-dialog').hidden = true;
+        const resolver = sizeMismatchResolver;
+        sizeMismatchResolver = null;
+        if (resolver) resolver(choice);
+    }
+
+    function openSaveChoiceDialog() {
+        if (!canvas) { setExpertStatus('请先打开图片', '#f48771'); return; }
+        document.getElementById('save-choice-dialog').hidden = false;
+    }
+
+    function closeSaveChoiceDialog() {
+        const dialog = document.getElementById('save-choice-dialog');
+        if (dialog) dialog.hidden = true;
+    }
+
+    function handleSaveChoiceBackdrop(event) {
+        if (event.target === event.currentTarget) closeSaveChoiceDialog();
+    }
+
+    function selectedPreviewImageData() {
+        const entry = generationPreviewObjects.get(selectedPreviewId);
+        if (!entry || !entry.thumbnail?.src) return null;
+        return entry.thumbnail.src;
+    }
+
+    async function saveImageFile(mode) {
+        if (!mode) { openSaveChoiceDialog(); return; }
+        closeSaveChoiceDialog();
+        try {
+            if (!canvas) throw new Error('请先打开图片');
+            const imageData = mode === 'selected' ? selectedPreviewImageData() : exportCurrentCompositeImage();
+            if (!imageData) throw new Error('请先在预览栏点击选中一张图片');
+            const raw = await pywebview.api.save_image(imageData);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            if (!result?.cancelled) setExpertStatus(`图片已保存：${result.path}`, '#4ec9b0');
+        } catch (error) {
+            setExpertStatus(error.message || String(error), '#f48771');
+        }
+    }
+    window.focusImageAdjust = focusImageAdjust;
+    window.focusRoomspace = focusRoomspace;
+    window.toggleTheme = toggleTheme;
+    window.showHelp = showHelp;
+    window.openImageFile = openImageFile;
+    window.openSaveChoiceDialog = openSaveChoiceDialog;
+    window.closeSaveChoiceDialog = closeSaveChoiceDialog;
+    window.handleSaveChoiceBackdrop = handleSaveChoiceBackdrop;
+    window.resolveSizeMismatchChoice = resolveSizeMismatchChoice;
+    window.saveImageFile = saveImageFile;
+
+    // 启动时应用主题并默认显示空间设计
+    applyTheme(currentTheme);
+    loadThemeFromBackend();
+    focusRoomspace();
+</script>
+</body>
+</html>

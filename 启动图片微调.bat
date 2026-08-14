@@ -1,0 +1,6 @@
+@echo off
+echo 启动图片编辑工具...
+echo.
+echo 首次运行会自动同步依赖，请稍候...
+uv run python image_eidt/app.py
+pause

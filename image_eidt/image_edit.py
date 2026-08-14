@@ -1,0 +1,960 @@
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+import base64
+import json
+import os
+import re
+import time
+from io import BytesIO
+from pathlib import Path
+
+import cv2
+import numpy as np
+import requests
+from PIL import Image
+
+
+INPUT_FOLDER = "img_input"
+OUTPUT_FOLDER = "img"
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+FEATHER_PIXELS = 6
+PYRAMID_LEVELS = 4
+MATCH_SCALES = (1.0, 0.95, 1.05, 0.90, 1.10, 0.85, 1.15, 0.80, 1.20)
+MIN_MATCH_CONFIDENCE = 0.80
+
+
+class OutputSizeMismatch(RuntimeError):
+    def __init__(self, image, requested_size, actual_size, baseurl):
+        self.image = image
+        self.requested_size = tuple(requested_size)
+        self.actual_size = tuple(actual_size)
+        self.baseurl = baseurl
+        super().__init__(
+            f"模型接口返回尺寸不一致：请求 {self.requested_size[0]}×{self.requested_size[1]}，"
+            f"实际 {self.actual_size[0]}×{self.actual_size[1]}。"
+        )
+
+
+MODEL_CONFIG_PATH = Path(__file__).with_name("image_models.json")
+TEXT_TO_IMAGE_MODELS = {
+    "qwen/qwen-image-2512",
+    "tongyi-mai/z-image-turbo",
+}
+
+PATCH_PROMPT = (
+    "Edit this image crop and return the complete crop without any text. Remove every visible "
+    "or faint title, body character, number, punctuation mark, and partial glyph. Reconstruct "
+    "the exact background behind the text. Preserve the existing panel, blur, colors, lighting, "
+    "texture, framing, and sharpness. Do not add text, symbols, lines, objects, gradients, "
+    "sharpening, denoising, or redesign the image."
+)
+
+
+UNSET_PROVIDER = "未设置"
+
+def image_model_id(model, provider=UNSET_PROVIDER):
+    normalized_provider = str(provider).strip() or UNSET_PROVIDER
+    return f"{normalized_provider}::{str(model).strip()}"
+
+def load_image_model_config():
+    """Load the global current model and configured image endpoints."""
+    try:
+        payload = json.loads(MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"无法读取模型配置 {MODEL_CONFIG_PATH.name}: {exc}") from exc
+    if isinstance(payload, list):
+        raw_models = payload
+        current_model = ""
+    elif isinstance(payload, dict):
+        raw_models = payload.get("models", [])
+        current_model = str(payload.get("current_model", "")).strip()
+    else:
+        raise ValueError("模型配置必须是 JSON 对象或数组")
+    models = []
+    for item in raw_models:
+        if not isinstance(item, dict):
+            continue
+        model = str(item.get("model", "")).strip()
+        provider = str(item.get("provider", UNSET_PROVIDER)).strip() or UNSET_PROVIDER
+        if provider in {"???", "??????"}:
+            provider = UNSET_PROVIDER
+        normalized = {
+            "id": str(item.get("id", "")).strip() or image_model_id(model, provider),
+            "model": model,
+            "provider": provider,
+            "baseurl": str(item.get("baseurl", "")).strip().rstrip("/"),
+            "key": str(item.get("key", "")).strip(),
+        }
+        if all(normalized.values()):
+            models.append(normalized)
+    if not models:
+        raise ValueError("模型配置中没有可用模型")
+    ids = {item["id"] for item in models}
+    if current_model not in ids:
+        legacy = next((item for item in models if item["model"] == current_model), None)
+        current_model = legacy["id"] if legacy else models[0]["id"]
+    return {"current_model": current_model, "models": models}
+
+
+def load_image_models():
+    return load_image_model_config()["models"]
+
+
+def save_image_models(models, current_model=None):
+    normalized = []
+    seen = set()
+    for item in models:
+        model = str(item.get("model", "")).strip()
+        provider = str(item.get("provider", UNSET_PROVIDER)).strip() or UNSET_PROVIDER
+        if provider in {"???", "??????"}:
+            provider = UNSET_PROVIDER
+        baseurl = str(item.get("baseurl", "")).strip().rstrip("/")
+        key = str(item.get("key", "")).strip()
+        item_id = str(item.get("id", "")).strip() or image_model_id(model, provider)
+        if not model or not baseurl or not key or item_id in seen:
+            continue
+        seen.add(item_id)
+        normalized.append({"id": item_id, "model": model, "provider": provider, "baseurl": baseurl, "key": key})
+    if not normalized:
+        raise ValueError("至少需要保留一个模型")
+    ids = {item["id"] for item in normalized}
+    selected = str(current_model or "").strip()
+    if selected not in ids:
+        legacy = next((item for item in normalized if item["model"] == selected), None)
+        selected = legacy["id"] if legacy else normalized[0]["id"]
+    payload = {"current_model": selected, "models": normalized}
+    temporary = MODEL_CONFIG_PATH.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(MODEL_CONFIG_PATH)
+    return normalized
+
+
+def add_image_model(baseurl, key, model, provider="未设置"):
+    values = {"model": str(model).strip(), "provider": str(provider).strip(), "baseurl": str(baseurl).strip(), "key": str(key).strip()}
+    if not all(values.values()):
+        raise ValueError("模型名称?服务商?Base URL 和 Key 均不能为空")
+    config = load_image_model_config()
+    models = config["models"]
+    if any(item["model"] == values["model"] and item["provider"] == values["provider"] for item in models):
+        raise ValueError(f"模型 {values['model']}?{values['provider']}?已存在")
+    values["id"] = image_model_id(values["model"], values["provider"])
+    models.append(values)
+    return save_image_models(models, config["current_model"])
+
+
+def update_image_model(original_id, baseurl, key, model, provider=UNSET_PROVIDER):
+    original = str(original_id).strip()
+    config = load_image_model_config()
+    target = next((item for item in config["models"] if item["id"] == original), None)
+    values = {
+        "model": str(model).strip(),
+        "provider": str(provider).strip() or "???",
+        "baseurl": str(baseurl).strip(),
+        "key": str(key).strip() or (target["key"] if target else ""),
+    }
+    if not original or not all(values.values()):
+        raise ValueError("?????????Base URL ? Key ?????")
+    if target is None:
+        raise ValueError(f"??????? {original}")
+    new_id = image_model_id(values["model"], values["provider"])
+    if any(item is not target and item["id"] == new_id for item in config["models"]):
+        raise ValueError(f"?? {values['model']}?{values['provider']}????")
+    old_id = target["id"]
+    target.update(values)
+    target["id"] = new_id
+    current = new_id if config["current_model"] == old_id else config["current_model"]
+    return save_image_models(config["models"], current)
+
+
+def delete_image_model(model_id):
+    requested = str(model_id).strip()
+    config = load_image_model_config()
+    remaining = [item for item in config["models"] if item["id"] != requested]
+    if len(remaining) == len(config["models"]):
+        raise ValueError(f"??????? {requested}")
+    return save_image_models(remaining, config["current_model"])
+
+
+def set_current_image_model(model_id):
+    requested = str(model_id or "").strip()
+    config = load_image_model_config()
+    if requested not in {item["id"] for item in config["models"]}:
+        raise ValueError(f"???????: {requested}")
+    save_image_models(config["models"], requested)
+    return requested
+
+
+def get_model_config(model=None):
+    config = load_image_model_config()
+    models = config["models"]
+    requested = str(model or config["current_model"]).strip()
+    for item in models:
+        if item["id"] == requested:
+            return item
+    legacy = next((item for item in models if item["model"] == requested), None)
+    if legacy:
+        return legacy
+    raise ValueError(f"???????: {requested}")
+
+
+def image_model_capability(model):
+    return "text-to-image" if str(model).strip().lower() in TEXT_TO_IMAGE_MODELS else "image-edit"
+
+
+def _model_client(config):
+    if OpenAI is None:
+        raise RuntimeError("缺少 openai 依赖，请先安装项目依赖")
+    return OpenAI(base_url=config["baseurl"], api_key=config["key"])
+
+
+def _check_cancelled(cancel_check):
+    if cancel_check and cancel_check():
+        raise RuntimeError("修改已终止")
+
+
+def _modelscope_image_edit(image, prompt, config, cancel_check=None, output_size=None, reference_images=None):
+    """Call ModelScope's asynchronous image generation or editing API."""
+    if image_model_capability(config["model"]) == "text-to-image":
+        raise ValueError(
+            f"{config['model']} 仅支持文生图，不能用于专家图像修改；ModelScope Base URL 与子路由均正确。"
+        )
+    _check_cancelled(cancel_check)
+    base_url = config["baseurl"].rstrip("/")
+    if not base_url.lower().endswith("/v1"):
+        base_url += "/v1"
+    image_stream = image_file(image.convert("RGB"), "reference.png")
+    image_data = "data:image/png;base64," + base64.b64encode(image_stream.read()).decode("ascii")
+    image_stream.close()
+    headers = {
+        "Authorization": f"Bearer {config['key']}",
+        "Content-Type": "application/json",
+        "X-ModelScope-Async-Mode": "true",
+    }
+    payload = {
+        "model": config["model"],
+        "prompt": prompt,
+        "size": f"{output_size[0]}x{output_size[1]}" if output_size else f"{image.width}x{image.height}",
+    }
+    reference_data = []
+    for index, reference in enumerate(reference_images or []):
+        reference_stream = image_file(reference.convert("RGB"), f"reference-{index}.png")
+        try:
+            reference_data.append("data:image/png;base64," + base64.b64encode(reference_stream.read()).decode("ascii"))
+        finally:
+            reference_stream.close()
+    payload["image_url"] = [image_data, *reference_data]
+    response = requests.post(
+        f"{base_url}/images/generations", headers=headers, json=payload, timeout=60
+    )
+    _check_cancelled(cancel_check)
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = response.text[:800]
+        raise RuntimeError(f"ModelScope 请求失败: {detail}") from exc
+    task_id = (response.json() or {}).get("task_id")
+    if not task_id:
+        raise RuntimeError("ModelScope 未返回 task_id")
+
+    task_headers = {
+        "Authorization": f"Bearer {config['key']}",
+        "X-ModelScope-Task-Type": "image_generation",
+    }
+    # ModelScope edit models can remain queued for several minutes at busy times.
+    for _ in range(180):
+        _check_cancelled(cancel_check)
+        result = requests.get(
+            f"{base_url}/tasks/{task_id}", headers=task_headers, timeout=30
+        )
+        result.raise_for_status()
+        data = result.json() or {}
+        status = str(data.get("task_status", "")).upper()
+        if status == "SUCCEED":
+            outputs = data.get("output_images") or []
+            if not outputs:
+                raise RuntimeError("ModelScope 任务成功但没有返回图片")
+            output = outputs[0]
+            if isinstance(output, str) and output.startswith("data:image/"):
+                encoded = output.split(",", 1)[1]
+                return Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+            image_response = requests.get(str(output), timeout=60)
+            image_response.raise_for_status()
+            return Image.open(BytesIO(image_response.content)).convert("RGB")
+        if status == "FAILED":
+            raise RuntimeError(f"ModelScope 图像任务失败: {data.get('message') or data.get('error') or data}")
+        time.sleep(5)
+    raise TimeoutError("ModelScope 图像任务等待超过 15 分钟")
+
+
+def encode_data_url(image_bytes, image_format):
+    image_format = image_format.lower()
+    mime = "jpeg" if image_format in ("jpg", "jpeg") else image_format
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:image/{mime};base64,{encoded}"
+
+
+def extract_data_image(value):
+    if isinstance(value, str):
+        match = re.search(
+            r"data:image/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})",
+            value,
+        )
+        if match:
+            return Image.open(BytesIO(base64.b64decode(match.group(1)))).convert("RGB")
+    elif isinstance(value, dict):
+        for child in value.values():
+            image = extract_data_image(child)
+            if image is not None:
+                return image
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            image = extract_data_image(child)
+            if image is not None:
+                return image
+    return None
+
+
+def _clamp_box(box, width, height):
+    x1, y1, x2, y2 = (int(round(value)) for value in box)
+    x1 = max(0, min(width - 1, x1))
+    y1 = max(0, min(height - 1, y1))
+    x2 = max(x1 + 1, min(width, x2))
+    y2 = max(y1 + 1, min(height, y2))
+    return x1, y1, x2, y2
+
+
+def decode_selection_mask(selection_mask, size=None):
+    """Return a grayscale selection mask, using alpha for transparent PNG input."""
+    if selection_mask is None:
+        return None
+    if isinstance(selection_mask, str):
+        encoded = selection_mask.split(",", 1)[-1]
+        selection_mask = base64.b64decode(encoded)
+    if isinstance(selection_mask, (bytes, bytearray)):
+        selection_mask = Image.open(BytesIO(selection_mask))
+    if not isinstance(selection_mask, Image.Image):
+        array = np.asarray(selection_mask)
+        if array.dtype == np.bool_:
+            array = array.astype(np.uint8) * 255
+        elif array.dtype != np.uint8:
+            array = np.nan_to_num(array)
+            if array.size and np.max(array) <= 1:
+                array = array * 255
+            array = np.clip(array, 0, 255).astype(np.uint8)
+        selection_mask = Image.fromarray(array)
+
+    if "A" in selection_mask.getbands():
+        mask = selection_mask.getchannel("A")
+    else:
+        mask = selection_mask.convert("L")
+    if size is not None and mask.size != tuple(size):
+        mask = mask.resize(tuple(size), Image.Resampling.LANCZOS)
+    return mask
+
+
+def composite_selection_result(source, generated, selection_mask):
+    if selection_mask is None:
+        return generated
+    protected = source.convert("RGB")
+    if protected.size != generated.size:
+        protected = protected.resize(generated.size, Image.Resampling.LANCZOS)
+    mask = np.asarray(decode_selection_mask(selection_mask, generated.size), dtype=np.uint8).copy()
+    mask[mask <= 8] = 0
+    return Image.composite(generated.convert("RGB"), protected, Image.fromarray(mask, "L"))
+
+
+def gpt_edit_mask(image, editable_box=None, editable_mask=None):
+    width, height = image.size
+    rgba_mask = np.zeros((height, width, 4), dtype=np.uint8)
+    rgba_mask[:, :, 3] = 255
+    if editable_box is None:
+        editable_box = (0, 0, width, height)
+    x1, y1, x2, y2 = _clamp_box(editable_box, width, height)
+    if editable_mask is None:
+        rgba_mask[y1:y2, x1:x2, :3] = 255
+        rgba_mask[y1:y2, x1:x2, 3] = 0
+    else:
+        selected = np.asarray(decode_selection_mask(editable_mask, (width, height)))
+        selected = selected.copy()
+        selected[:y1] = 0
+        selected[y2:] = 0
+        selected[:, :x1] = 0
+        selected[:, x2:] = 0
+        rgba_mask[:, :, :3] = selected[:, :, None]
+        rgba_mask[:, :, 3] = 255 - selected
+    return Image.fromarray(rgba_mask, "RGBA")
+
+def aligned_gpt_output_size(size):
+    width, height = (int(size[0]), int(size[1]))
+    if width <= 0 or height <= 0:
+        raise ValueError("\u56fe\u7247\u5bbd\u9ad8\u5fc5\u987b\u5927\u4e8e 0")
+    ratio = width / height
+    if not 1 / 3 <= ratio <= 3:
+        raise ValueError(
+            "GPT Image 2 \u7684\u8f93\u5165\u5bbd\u9ad8\u6bd4\u5fc5\u987b\u5728 1:3 \u5230 3:1 \u4e4b\u95f4\uff0c"
+            "\u7a0b\u5e8f\u4e0d\u4f1a\u7528\u8865\u8fb9\u6216\u62c9\u4f38\u89c4\u907f"
+        )
+    scale = min(
+        1.0,
+        4096 / width,
+        4096 / height,
+        (16777216 / (width * height)) ** 0.5,
+    )
+    aligned_width = max(16, int(round(width * scale / 16)) * 16)
+    aligned_height = max(16, int(round(height * scale / 16)) * 16)
+    return validate_gpt_output_size((aligned_width, aligned_height))
+
+def image_file(image, name):
+    stream = BytesIO()
+    image.save(stream, "PNG")
+    stream.seek(0)
+    stream.name = name
+    return stream
+
+
+def validate_gpt_output_size(output_size):
+    if output_size is None:
+        return None
+    width, height = (int(output_size[0]), int(output_size[1]))
+    if not 16 <= width <= 4096 or not 16 <= height <= 4096:
+        raise ValueError("GPT Image 2 的宽高必须在 16 到 4096 像素之间")
+    if width % 16 or height % 16:
+        raise ValueError("GPT Image 2 的宽高必须是 16 的倍数")
+    if width * height > 16777216:
+        raise ValueError("GPT Image 2 的总像素数不能超过 16777216")
+    ratio = width / height
+    if not 1 / 3 <= ratio <= 3:
+        raise ValueError("GPT Image 2 的宽高比必须在 1:3 到 3:1 之间")
+    return width, height
+
+
+def edit_patch_gpt(
+    image,
+    editable_box=None,
+    prompt=PATCH_PROMPT,
+    model=None,
+    cancel_check=None,
+    editable_mask=None,
+    output_size=None,
+    reference_images=None,
+):
+    _check_cancelled(cancel_check)
+    config = get_model_config(model)
+    requested_size = validate_gpt_output_size(output_size) if output_size else aligned_gpt_output_size(image.size)
+    enforce_requested_size = output_size is not None
+    client = _model_client(config)
+    source = image.convert("RGB")
+    mask = gpt_edit_mask(source, editable_box, editable_mask)
+    source_file = image_file(source, "region.png")
+    mask_file = image_file(mask, "mask.png")
+    reference_files = [image_file(reference.convert("RGB"), f"reference-{index}.png") for index, reference in enumerate(reference_images or [])]
+    try:
+        image_input = [source_file, *reference_files] if reference_files else source_file
+        response = client.images.edit(
+            model=config["model"],
+            image=image_input,
+            mask=mask_file,
+            prompt=prompt,
+            quality="high",
+            size=f"{requested_size[0]}x{requested_size[1]}",
+            output_format="png",
+            response_format="b64_json",
+        )
+    finally:
+        source_file.close()
+        mask_file.close()
+        for reference_file in reference_files:
+            reference_file.close()
+    _check_cancelled(cancel_check)
+
+    encoded = getattr(response.data[0], "b64_json", None)
+    if not encoded:
+        raise ValueError(f"{config['model']} response did not contain b64_json")
+    generated = Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+    if enforce_requested_size:
+        if generated.size != requested_size:
+            raise OutputSizeMismatch(
+                generated,
+                requested_size,
+                generated.size,
+                config["baseurl"],
+            )
+        return generated
+    if generated.size != source.size:
+        generated = generated.resize(source.size, Image.Resampling.LANCZOS)
+    return generated
+
+
+def edit_patch_legacy(image, editable_box=None, prompt=PATCH_PROMPT, model=None, cancel_check=None, output_size=None, reference_images=None, generation_options=None):
+    _check_cancelled(cancel_check)
+    config = get_model_config(model)
+    client = _model_client(config)
+    if editable_box is not None:
+        x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
+        target = image.crop((x1, y1, x2, y2))
+        cleaned = edit_patch_legacy(target, prompt=prompt, model=config["id"], cancel_check=cancel_check)
+        return feather_patch(image, cleaned, (x1, y1, x2, y2))
+    source = image_file(image.convert("RGB"), "region.png")
+    image_bytes = source.getvalue()
+    source.close()
+    content = [{"type":"image_url", "image_url":{"url": encode_data_url(image_bytes, "png")}}]
+    for reference in reference_images or []:
+        reference_stream = image_file(reference.convert("RGB"), "reference.png")
+        try:
+            content.append({"type":"image_url", "image_url":{"url": encode_data_url(reference_stream.getvalue(), "png")}})
+        finally:
+            reference_stream.close()
+    request_prompt = prompt
+    extra_body = {}
+    if "gemini" in config["model"].lower() and generation_options:
+        aspect_ratio = generation_options.get("aspect_ratio") or "1:1"
+        image_size = generation_options.get("image_size") or "1K"
+        extra_body = {
+            "size": aspect_ratio,
+            "imageSize": image_size,
+        }
+        request_prompt = f"{prompt}\n\nGenerate the edited image at {image_size} resolution with a {aspect_ratio} aspect ratio."
+    else:
+        extra_body = {"size": f"{output_size[0]}x{output_size[1]}" if output_size else f"{image.width}x{image.height}"}
+    content.append({"type":"text", "text":request_prompt})
+    response = client.chat.completions.create(
+        model=config["model"],
+        extra_body=extra_body,
+        messages=[
+            {
+                "role": "user",
+                "content": content,
+            }
+        ],
+    )
+    payload = response.model_dump() if hasattr(response, "model_dump") else response
+    result = extract_data_image(payload)
+    if result is None:
+        raise ValueError("legacy endpoint response did not contain an image")
+    if "gemini" in config["model"].lower() and generation_options and output_size and result.size != output_size:
+        raise OutputSizeMismatch(result, output_size, result.size, config["baseurl"])
+    if output_size is not None or generation_options is not None:
+        return result
+    return result.resize(image.size, Image.Resampling.LANCZOS)
+
+
+def edit_patch(
+    image,
+    editable_box=None,
+    prompt=PATCH_PROMPT,
+    model=None,
+    cancel_check=None,
+    editable_mask=None,
+    output_size=None,
+    reference_images=None,
+    generation_options=None,
+):
+    _check_cancelled(cancel_check)
+    config = get_model_config(model)
+    if "modelscope.cn" in config["baseurl"].lower():
+        if editable_box is not None:
+            x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
+            target = image.crop((x1, y1, x2, y2))
+            generated = _modelscope_image_edit(target, prompt, config, cancel_check, reference_images=reference_images)
+            return feather_patch(image, generated, (x1, y1, x2, y2))
+        generated = _modelscope_image_edit(image, prompt, config, cancel_check, output_size, reference_images)
+        if output_size is not None:
+            return generated
+        return generated.resize(image.size, Image.Resampling.LANCZOS)
+    if config["model"].lower().startswith("gpt-image"):
+        return edit_patch_gpt(
+            image,
+            editable_box,
+            prompt,
+            config["id"],
+            cancel_check,
+            editable_mask,
+            output_size,
+            reference_images,
+        )
+    return edit_patch_legacy(image, editable_box, prompt, config["id"], cancel_check, output_size, reference_images, generation_options)
+
+
+def gradient_image(gray):
+    return cv2.magnitude(
+        cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3),
+        cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3),
+    )
+
+
+def locate_patch_pyramid(base_rgb, patch_rgb):
+    """Locate an exact or resized crop using multi-scale intensity and edge matching."""
+    base_gray = cv2.cvtColor(base_rgb, cv2.COLOR_RGB2GRAY)
+    base_edge = gradient_image(base_gray)
+    best = None
+
+    for scale in MATCH_SCALES:
+        width = max(8, int(round(patch_rgb.shape[1] * scale)))
+        height = max(8, int(round(patch_rgb.shape[0] * scale)))
+        if width > base_rgb.shape[1] or height > base_rgb.shape[0]:
+            continue
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+        resized = cv2.resize(patch_rgb, (width, height), interpolation=interpolation)
+        patch_gray = cv2.cvtColor(resized, cv2.COLOR_RGB2GRAY)
+        intensity_scores = cv2.matchTemplate(
+            base_gray, patch_gray, cv2.TM_CCOEFF_NORMED
+        )
+        edge_scores = cv2.matchTemplate(
+            base_edge, gradient_image(patch_gray), cv2.TM_CCOEFF_NORMED
+        )
+        scores = intensity_scores * 0.7 + edge_scores * 0.3
+        _, score, _, location = cv2.minMaxLoc(scores)
+        if best is None or score > best[0]:
+            best = (score, location, (width, height), scale)
+
+    if best is None or best[0] < MIN_MATCH_CONFIDENCE:
+        score = 0.0 if best is None else best[0]
+        raise ValueError(f"Region match confidence is too low: {score:.3f}")
+    score, (x, y), (width, height), scale = best
+    return (x, y, x + width, y + height), score, scale
+
+
+def match_patch_boundary(patch, target, selection_mask=None):
+    """Match patch color and contrast using robust samples along the edited boundary."""
+    patch_array = patch.astype(np.float32)
+    target_array = target.astype(np.float32)
+    height, width = patch.shape[:2]
+    thickness = max(2, min(8, min(width, height) // 4))
+
+    if selection_mask is None:
+        ring = np.zeros((height, width), dtype=bool)
+        ring[:thickness] = True
+        ring[-thickness:] = True
+        ring[:, :thickness] = True
+        ring[:, -thickness:] = True
+    else:
+        selected = np.asarray(decode_selection_mask(selection_mask, (width, height))) > 8
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        eroded = cv2.erode(selected.astype(np.uint8), kernel, iterations=thickness)
+        ring = selected & ~eroded.astype(bool)
+        if np.count_nonzero(ring) < 8:
+            ring = selected
+
+    difference = np.abs(patch_array - target_array).mean(axis=2)
+    cutoff = float(np.percentile(difference[ring], 60))
+    sample = ring & (difference <= cutoff)
+
+    matched = patch_array.copy()
+    for channel in range(3):
+        source = patch_array[:, :, channel][sample]
+        destination = target_array[:, :, channel][sample]
+        source_iqr = float(np.percentile(source, 75) - np.percentile(source, 25))
+        destination_iqr = float(
+            np.percentile(destination, 75) - np.percentile(destination, 25)
+        )
+        gain = min(1.15, max(0.85, destination_iqr / max(source_iqr, 1.0)))
+        matched[:, :, channel] = (
+            patch_array[:, :, channel] - float(np.median(source))
+        ) * gain + float(np.median(destination))
+    return np.clip(matched, 0, 255).astype(np.uint8)
+def multiband_blend(base, candidate, alpha, levels=PYRAMID_LEVELS):
+    base_pyramid = [base.astype(np.float32)]
+    candidate_pyramid = [candidate.astype(np.float32)]
+    mask_pyramid = [alpha.astype(np.float32)]
+    for _ in range(levels):
+        base_pyramid.append(cv2.pyrDown(base_pyramid[-1]))
+        candidate_pyramid.append(cv2.pyrDown(candidate_pyramid[-1]))
+        mask_pyramid.append(cv2.pyrDown(mask_pyramid[-1]))
+
+    base_laplacian = []
+    candidate_laplacian = []
+    for level in range(levels):
+        size = (base_pyramid[level].shape[1], base_pyramid[level].shape[0])
+        base_laplacian.append(
+            base_pyramid[level]
+            - cv2.pyrUp(base_pyramid[level + 1], dstsize=size)
+        )
+        candidate_laplacian.append(
+            candidate_pyramid[level]
+            - cv2.pyrUp(candidate_pyramid[level + 1], dstsize=size)
+        )
+    base_laplacian.append(base_pyramid[-1])
+    candidate_laplacian.append(candidate_pyramid[-1])
+
+    blended_levels = []
+    for base_level, candidate_level, mask_level in zip(
+        base_laplacian, candidate_laplacian, mask_pyramid
+    ):
+        mask_level = mask_level[:, :, None]
+        blended_levels.append(
+            base_level * (1.0 - mask_level) + candidate_level * mask_level
+        )
+    result = blended_levels[-1]
+    for level in range(levels - 1, -1, -1):
+        size = (blended_levels[level].shape[1], blended_levels[level].shape[0])
+        result = cv2.pyrUp(result, dstsize=size) + blended_levels[level]
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
+def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
+    """Paste a crop using boundary matching and multi-band blending."""
+    x1, y1, x2, y2 = box
+    target_width = x2 - x1
+    target_height = y2 - y1
+    if patch.size != (target_width, target_height):
+        patch = patch.resize(
+            (target_width, target_height), Image.Resampling.LANCZOS
+        )
+
+    if selection_mask is None:
+        patch_rgb = np.asarray(patch.convert("RGB"))
+        base_array = np.asarray(base.convert("RGB")).copy()
+        height, width = base_array.shape[:2]
+        target_patch = base_array[y1:y2, x1:x2]
+        patch_rgb = match_patch_boundary(patch_rgb, target_patch)
+
+        border = pixels * 2
+        extended = cv2.copyMakeBorder(
+            patch_rgb, border, border, border, border, cv2.BORDER_REFLECT_101
+        )
+        ex1 = max(0, x1 - border)
+        ey1 = max(0, y1 - border)
+        ex2 = min(width, x2 + border)
+        ey2 = min(height, y2 + border)
+        sx1 = ex1 - (x1 - border)
+        sy1 = ey1 - (y1 - border)
+        sx2 = sx1 + (ex2 - ex1)
+        sy2 = sy1 + (ey2 - ey1)
+        source = extended[sy1:sy2, sx1:sx2]
+
+        alpha_full = np.zeros((height, width), dtype=np.float32)
+        for distance in range(pixels, 0, -1):
+            weight = (pixels - distance + 1) / (pixels + 1)
+            ax1 = max(0, x1 - distance)
+            ay1 = max(0, y1 - distance)
+            ax2 = min(width, x2 + distance)
+            ay2 = min(height, y2 + distance)
+            alpha_full[ay1:ay2, ax1:ax2] = weight
+        alpha_full[y1:y2, x1:x2] = 1.0
+        candidate = base_array.copy()
+        candidate[ey1:ey2, ex1:ex2] = source
+        result = multiband_blend(base_array, candidate, alpha_full)
+
+        support = pixels * 4
+        keep = np.zeros((height, width), dtype=bool)
+        keep[
+            max(0, y1 - support) : min(height, y2 + support),
+            max(0, x1 - support) : min(width, x2 + support),
+        ] = True
+        result[~keep] = base_array[~keep]
+        return Image.fromarray(result, "RGB")
+
+    base_array = np.asarray(base.convert("RGB")).copy()
+    height, width = base_array.shape[:2]
+    selected_level = np.asarray(
+        decode_selection_mask(selection_mask, (width, height)), dtype=np.float32
+    ) / 255.0
+    selected = selected_level > (8.0 / 255.0)
+    if not np.any(selected):
+        raise ValueError("涂抹选区为空")
+
+    target_selected = selected[y1:y2, x1:x2]
+    if not np.any(target_selected):
+        raise ValueError("涂抹选区不在修改区域内")
+    patch_rgb = np.asarray(patch.convert("RGB"))
+    target_patch = base_array[y1:y2, x1:x2]
+    patch_rgb = match_patch_boundary(patch_rgb, target_patch, target_selected.astype(np.uint8) * 255)
+
+    candidate = base_array.copy()
+    candidate_target = candidate[y1:y2, x1:x2]
+    candidate_target[target_selected] = patch_rgb[target_selected]
+
+    outside = (~selected).astype(np.uint8)
+    distance = cv2.distanceTransform(outside, cv2.DIST_L2, 3)
+    alpha_full = np.maximum(
+        selected_level,
+        np.clip(1.0 - distance / (max(1, int(pixels)) + 1.0), 0.0, 1.0),
+    )
+    result = multiband_blend(base_array, candidate, alpha_full)
+
+    support_pixels = max(1, int(pixels)) * 4
+    kernel_size = support_pixels * 2 + 1
+    support = cv2.dilate(
+        selected.astype(np.uint8),
+        np.ones((kernel_size, kernel_size), dtype=np.uint8),
+    ).astype(bool)
+    result[~support] = base_array[~support]
+    return Image.fromarray(result, "RGB")
+def correction_layer(original, corrected, threshold=0):
+    """Return an RGBA layer that reproduces corrected over original."""
+    original_array = np.asarray(original.convert("RGB"))
+    corrected_array = np.asarray(corrected.convert("RGB"))
+    delta = np.max(
+        np.abs(corrected_array.astype(np.int16) - original_array.astype(np.int16)),
+        axis=2,
+    )
+    changed = delta > int(threshold)
+    overlay = np.zeros((*original_array.shape[:2], 4), dtype=np.uint8)
+    overlay[:, :, :3] = corrected_array
+    overlay[changed, 3] = 255
+    return Image.fromarray(overlay, "RGBA")
+
+
+def generate_correction_overlay(
+    page_image,
+    target_box,
+    context_pixels=24,
+    feather_pixels=FEATHER_PIXELS,
+    prompt=PATCH_PROMPT,
+    model=None,
+    cancel_check=None,
+    selection_mask=None,
+    output_size=None,
+    reference_images=None,
+    generation_options=None,
+    full_image_edit=False,
+):
+    """Generate a full image or transparent local overlay for the requested selection."""
+    page = page_image.convert("RGB")
+    x1, y1, x2, y2 = _clamp_box(target_box, page.width, page.height)
+    if full_image_edit:
+        editable_mask = decode_selection_mask(selection_mask, page.size) if selection_mask else None
+        generated = edit_patch(
+            page,
+            editable_box=None,
+            prompt=prompt,
+            model=model,
+            cancel_check=cancel_check,
+            editable_mask=editable_mask,
+            output_size=output_size,
+            reference_images=reference_images,
+            generation_options=generation_options,
+        )
+        return generated.convert("RGBA"), (0, 0, generated.width, generated.height)
+    if selection_mask is None and x1 == 0 and y1 == 0 and x2 == page.width and y2 == page.height:
+        generated = edit_patch(
+            page,
+            editable_box=None,
+            prompt=prompt,
+            model=model,
+            cancel_check=cancel_check,
+            output_size=output_size,
+            reference_images=reference_images,
+            generation_options=generation_options,
+        )
+        return generated.convert("RGBA"), (0, 0, generated.width, generated.height)
+    margin = max(int(context_pixels), int(feather_pixels) * 4)
+    overlay_box = (
+        max(0, x1 - margin),
+        max(0, y1 - margin),
+        min(page.width, x2 + margin),
+        min(page.height, y2 + margin),
+    )
+    ox1, oy1, ox2, oy2 = overlay_box
+    context = page.crop(overlay_box)
+    local_target = (x1 - ox1, y1 - oy1, x2 - ox1, y2 - oy1)
+
+    context_mask = None
+    if selection_mask is not None:
+        page_mask = np.asarray(decode_selection_mask(selection_mask, page.size)).copy()
+        page_mask[:y1] = 0
+        page_mask[y2:] = 0
+        page_mask[:, :x1] = 0
+        page_mask[:, x2:] = 0
+        if not np.any(page_mask > 8):
+            raise ValueError("涂抹选区为空")
+        context_mask = Image.fromarray(page_mask[oy1:oy2, ox1:ox2], "L")
+
+    if prompt == PATCH_PROMPT and model is None and context_mask is None:
+        kwargs = {"editable_box": local_target}
+        if cancel_check is not None:
+            kwargs["cancel_check"] = cancel_check
+        kwargs["reference_images"] = reference_images
+        generated_context = edit_patch(context, **kwargs)
+    else:
+        generated_context = edit_patch(
+            context,
+            editable_box=local_target,
+            prompt=prompt,
+            model=model,
+            cancel_check=cancel_check,
+            editable_mask=context_mask,
+            reference_images=reference_images,
+        )
+    generated_target = generated_context.crop(local_target)
+    corrected_context = feather_patch(
+        context,
+        generated_target,
+        local_target,
+        pixels=max(1, int(feather_pixels)),
+        selection_mask=context_mask,
+    )
+    return correction_layer(context, corrected_context), overlay_box
+def save_png(image, output_path, source_info):
+    options = {}
+    for key in ("icc_profile", "exif", "dpi"):
+        if key in source_info:
+            options[key] = source_info[key]
+    image.save(output_path, "PNG", **options)
+
+
+def save_correction_layer(original, corrected, output_path):
+    """Save an RGBA overlay that reproduces the corrected image at position (0, 0)."""
+    layer = correction_layer(original, corrected)
+    layer.save(output_path, "PNG")
+
+    reconstructed = Image.alpha_composite(
+        original.convert("RGBA"), layer
+    ).convert("RGB")
+    if not np.array_equal(
+        np.asarray(reconstructed), np.asarray(corrected.convert("RGB"))
+    ):
+        raise RuntimeError("correction layer verification failed")
+
+
+def main():
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    image_paths = [
+        os.path.join(INPUT_FOLDER, name)
+        for name in sorted(os.listdir(INPUT_FOLDER))
+        if name.lower().endswith(IMAGE_EXTENSIONS)
+    ]
+    if len(image_paths) < 2:
+        raise SystemExit("img_input must contain one base image and at least one crop")
+
+    sizes = {}
+    for path in image_paths:
+        with Image.open(path) as image:
+            sizes[path] = image.size
+    base_path = max(image_paths, key=lambda path: sizes[path][0] * sizes[path][1])
+    crop_paths = [path for path in image_paths if path != base_path]
+
+    with Image.open(base_path) as source:
+        source.load()
+        result = source.convert("RGB")
+        original = result.copy()
+        reference = np.asarray(result).copy()
+        source_info = source.info.copy()
+
+    print(f"Model: {get_model_config()['model']}")
+    print(f"Base image: {os.path.basename(base_path)}")
+    for index, crop_path in enumerate(crop_paths, 1):
+        with Image.open(crop_path) as crop_source:
+            crop_source.load()
+            crop = crop_source.convert("RGB")
+        box, score, scale = locate_patch_pyramid(reference, np.asarray(crop))
+        print(
+            f"[{index}/{len(crop_paths)}] {os.path.basename(crop_path)}: "
+            f"box={box}, confidence={score:.4f}, scale={scale:.2f}"
+        )
+        clean_crop = edit_patch(crop)
+        result = feather_patch(result, clean_crop, box)
+
+    stem = os.path.splitext(os.path.basename(base_path))[0]
+    output_path = os.path.join(OUTPUT_FOLDER, f"{stem}_no_text.png")
+    layer_path = os.path.join(OUTPUT_FOLDER, f"{stem}_correction_layer.png")
+    save_png(result, output_path, source_info)
+    save_correction_layer(original, result, layer_path)
+    print(f"Saved: {output_path} ({result.width}x{result.height})")
+    print(f"Saved correction layer: {layer_path}")
+
+
+if __name__ == "__main__":
+    main()

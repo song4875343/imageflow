@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#dfe4df" />
+  <title>EROOM | JSON 3D Study</title>
+</head>
+<body>
+  <main id="app">
+    <div id="scene" aria-label="三维房间模型"></div>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">E</span><div><strong>EROOM</strong><span>JSON · 3D STUDY</span></div></div>
+      <div class="view-actions" aria-label="视图控制">
+        <div id="modelPicker" class="model-picker">
+          <button id="modelPickerButton" class="model-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="modelPickerLabel">选择空间</span><span class="model-picker-arrow" aria-hidden="true"></span></button>
+          <div id="modelPickerMenu" class="model-picker-menu" role="listbox" aria-label="选择空间" hidden></div>
+          <select id="modelSelect" hidden aria-hidden="true" tabindex="-1"></select>
+        </div>
+        <button class="mode-button" id="resetView" type="button">透视</button>
+        <button class="mode-button" id="topView" type="button">俯视</button>
+        <button class="mode-button" id="cameraView" type="button">记录相机</button>
+        <button class="mode-button mode-button-primary" id="newSpace" type="button">新增</button>
+        <button class="mode-button" id="editView" type="button">编辑</button>
+        <button class="mode-button" id="outputView" type="button">输出</button>
+      </div>
+    </header>
+    <aside class="spec-panel" aria-label="参数面板">
+      <section id="modelPanel" class="panel-view">
+        <p class="eyebrow">JSON MODEL</p><h1 id="modelName">加载中</h1>
+        <dl><div><dt>室内净尺寸</dt><dd id="roomSize">-</dd></div><div><dt>层高</dt><dd><input id="roomHeightInput" class="inline-number" type="number" min="2" max="12" step="0.1" value="3.6" /><span>m</span><span id="roomHeight" hidden>3.6 m</span></dd></div><div><dt>数据文件</dt><dd><button id="dataFileButton" class="data-file-button" type="button">models.json</button><input id="dataFileInput" type="file" accept="application/json,.json" hidden /></dd></div></dl>
+        <div class="camera-presets"><label for="cameraPreset">相机机位</label><select id="cameraPreset"><option value="">暂无已记录机位</option></select><div><input id="cameraName" type="text" placeholder="机位名称" maxlength="30" /><button id="renameCamera" type="button">更名</button><button id="deleteCamera" type="button">删除</button></div></div><div id="legend" hidden></div>
+        <div class="wall-controls" aria-label="墙体控制"><span>墙体</span><button data-wall="north" type="button" aria-pressed="true">北</button><button data-wall="south" type="button" aria-pressed="true">南</button><button data-wall="east" type="button" aria-pressed="true">东</button><button data-wall="west" type="button" aria-pressed="true">西</button><button id="ceilingToggle" type="button" aria-pressed="false">天花</button><button id="quickHideToggle" class="quick-hide-toggle" type="button" aria-pressed="false" title="点击后选择需要临时隐藏的构件">隐</button><button id="quickShowToggle" type="button" title="显示全部被隐按钮隐藏的构件">显</button></div>
+        <label class="focal-control" for="focalLength"><span>焦距</span><input id="focalLength" type="range" min="18" max="85" step="1" value="35" /><output id="focalValue" for="focalLength">35 mm</output></label>
+        <div class="sun-controls" aria-label="日照控制"><label><span>东西</span><input id="sunX" type="range" min="-10" max="10" step="1" value="-6" /><output id="sunXValue" for="sunX">-6</output></label><label><span>南北</span><input id="sunZ" type="range" min="-10" max="10" step="1" value="7" /><output id="sunZValue" for="sunZ">7</output></label><label><span>高度角</span><input id="sunElevation" type="range" min="5" max="85" step="1" value="45" /><output id="sunElevationValue" for="sunElevation">45°</output></label><label><span>阳光</span><input id="sunIntensity" type="range" min="0" max="5" step="0.05" value="2.35" /><output id="sunIntensityValue" for="sunIntensity">2.35</output></label><label class="sun-toggle"><span>日照</span><input id="sunEnabled" type="checkbox" checked /><b>开启</b></label><label class="ambient-control"><span>环境光</span><input id="ambientIntensity" type="range" min="0" max="3" step="0.05" value="0.8" /><output id="ambientIntensityValue" for="ambientIntensity">0.80</output></label><label class="sun-toggle outline-toggle"><span>外轮廓</span><input id="perspectiveOutlines" type="checkbox" checked /><b>显示</b></label></div>
+      </section>
+      <section id="outputPanel" class="panel-view" hidden>
+        <p class="eyebrow">IMAGE OUTPUT</p><h1>输出图片</h1>
+        <label class="output-field"><span>规格</span><select id="outputPreset"><option value="custom">自定义</option><option value="1024">1K</option><option value="2048" selected>2K</option><option value="4096">4K</option></select></label>
+        <label class="output-field"><span>宽高比</span><select id="outputRatio"><option value="16:9" selected>16:9</option><option value="4:3">4:3</option><option value="3:2">3:2</option><option value="1:1">1:1</option><option value="9:16">9:16</option></select></label>
+        <div class="output-size"><label>宽<input id="outputWidth" type="number" min="64" max="8192" value="2048" /></label><b>×</b><label>高<input id="outputHeight" type="number" min="64" max="8192" value="1152" /></label></div>
+        <div class="output-location"><span>保存位置</span><button id="chooseFolder" type="button">选择位置</button><small id="folderName">浏览器下载目录</small></div>
+        <button id="saveImage" class="save-image" type="button">保存 PNG</button><button id="closeOutput" class="close-output" type="button">返回参数</button>
+      </section>
+      <section id="editPanel" class="panel-view editor-panel" hidden>
+        <div class="editor-head"><button id="importBlueprint" type="button">导入底图</button><button id="saveEditorData" type="button">保存</button><label><input id="blueprintVisible" type="checkbox" checked />显示底图</label></div>
+        <input id="blueprintFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        <div id="editorCategories" class="editor-categories" aria-label="绘制物体类别"></div>
+        <div class="editor-mode"><strong id="editorModeLabel">选择一个类别</strong><span id="editorModeHelp">点击类别开始绘制</span></div>
+        <div id="editorProperties" class="editor-properties"></div>
+        <label class="editor-special-option"><input id="orthogonalSnap" type="checkbox" checked /><span><strong>水平 / 垂直磁吸</strong><small>绘制或移动方向与正交夹角小于 10° 时自动吸附</small></span></label>
+        <button id="closeEditor" class="close-output" type="button">返回参数</button>
+      </section>
+    </aside>
+    <dialog id="spaceDialog" class="space-dialog">
+      <form method="dialog" id="spaceForm">
+        <div class="dialog-kicker">SPACE WORKSHOP</div>
+        <h2>新增空间</h2>
+        <p>创建一个空白工作区，或把本地 JSON 加入空间列表。</p>
+        <label class="dialog-field"><span>空间名称</span><input id="spaceNameInput" type="text" maxlength="60" placeholder="例如：新客厅方案" /></label>
+        <div class="dialog-divider"><span>或者</span></div>
+        <label class="dialog-file"><span>本地 JSON</span><input id="spaceJsonInput" type="file" accept="application/json,.json" /><small id="spaceJsonName">未选择文件</small></label>
+        <div class="dialog-actions"><button id="cancelSpace" value="cancel" type="submit">取消</button><button id="confirmSpace" class="confirm-button" value="default" type="submit">确定</button></div>
+      </form>
+    </dialog>
+    <dialog id="saveDialog" class="space-dialog save-dialog">
+      <form method="dialog" id="saveForm">
+        <div class="dialog-kicker">SAVE MODEL</div>
+        <h2>保存当前空间</h2>
+        <p>选择保存方式。另存只导出当前空间，系统保存会更新 <code>public/models.json</code>。</p>
+        <div class="save-choice-list"><button id="saveAsJson" value="save-as" type="submit"><strong>另存 JSON</strong><span>下载当前空间文件</span></button><button id="saveToSystem" value="save-system" type="submit"><strong>保存到系统</strong><span>写入 public/models.json</span></button></div>
+        <div class="dialog-actions"><button value="cancel" type="submit">取消</button></div>
+      </form>
+    </dialog>
+    <div id="outputOverlay" class="output-overlay" hidden><div id="outputFrame" class="output-frame"></div></div>
+    <div class="hint">拖动旋转 · 滚轮缩放 · 中键平移</div><div class="scale-bar" aria-label="比例尺"><span></span><b id="scaleLabel">5 m</b></div>
+    <div class="loading" id="loading"><span></span>正在加载 JSON 模型</div>
+  </main><script type="module" src="/src/main.js"></script>
+</body></html>

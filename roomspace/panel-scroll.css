@@ -1,0 +1,19 @@
+.spec-panel {
+  max-height: calc(100vh - 122px);
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.spec-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-panel {
+  max-height: none;
+}
+
+@media (max-width: 720px) {
+  .spec-panel {
+    max-height: calc(100vh - 132px);
+  }
+}
