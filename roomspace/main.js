@@ -77,7 +77,7 @@ function updateOutputFrame(){ const width=Math.max(64,Number(outputWidth.value)|
 function updateOutputDimensions(){ if(outputPreset.value!=='custom'){ const edge=Number(outputPreset.value), ratio=ratioValue(); if(ratio>=1){ outputWidth.value=String(edge); outputHeight.value=String(Math.round(edge/ratio)); }else{ outputHeight.value=String(edge); outputWidth.value=String(Math.round(edge*ratio)); } } updateOutputFrame(); }
 function setOutputMode(enabled){
   if(planEditor?.enabled){
-    modelPanel.hidden=true;
+    modelPanel.hidden=enabled;
     planEditor.setPanelVisible(!enabled);
   }else modelPanel.hidden=enabled;
   outputPanel.hidden=!enabled;

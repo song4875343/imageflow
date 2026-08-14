@@ -2263,7 +2263,7 @@ export function createPlanEditor(options) {
     ensureEditorData(getActiveModel());
     syncPanel();
     panel.hidden = false;
-    modelPanel.hidden = true;
+    modelPanel.hidden = false;
     outputPanel.hidden = true;
     overlay.hidden = true;
     group.visible = true;
@@ -2280,6 +2280,7 @@ export function createPlanEditor(options) {
     renderAll();
     updateCategoryButtons();
     document.querySelector('.hint').textContent = '1.5 m 剖切俯视 · 点击选择 · 拖动空白处框选 · Ctrl 可追加选择';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function exit() {
@@ -2306,12 +2307,12 @@ export function createPlanEditor(options) {
     document.querySelector('#editView').setAttribute('aria-pressed', 'false');
     renderAll();
     document.querySelector('.hint').textContent = '拖动旋转 · 滚轮缩放 · 中键平移';
+    document.querySelector('.spec-panel').scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   orthogonalSnap.addEventListener('change', () => { currentData().orthogonalSnap = orthogonalSnap.checked; });
 
   document.querySelector('#editView').addEventListener('click', () => enabled ? exit() : enter());
-  document.querySelector('#closeEditor').addEventListener('click', exit);
 
   return {
     get enabled() { return enabled; },
@@ -2359,7 +2360,6 @@ export function createPlanEditor(options) {
     },
     setPanelVisible(visible) {
       panel.hidden = !visible;
-      if (visible) modelPanel.hidden = true;
     },
     setPerspectiveView() {
       if (!enabled) return;
