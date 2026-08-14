@@ -304,6 +304,16 @@
                 <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.776-1.272 5.23 0 1.513 1.324 1.513 3.518 0 4.842a3.75 3.75 0 0 1-.837.552c-.676.328-1.028.774-1.028 1.152v.75a.75.75 0 0 1-1.5 0v-.75c0-1.279 1.06-2.107 1.875-2.502.182-.088.351-.199.503-.331.83-.727.83-1.857 0-2.584ZM12 18a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd" />
             </svg>
         </div>
+        <div class="imgedit-nav-item imgedit-history-btn" role="button" tabindex="0" onclick="doUndo()" title="撤销 (Ctrl+Z)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
+            </svg>
+        </div>
+        <div class="imgedit-nav-item imgedit-history-btn" role="button" tabindex="0" onclick="doRedo()" title="重做 (Ctrl+Y)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18.4 10.6C16.55 9 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z" />
+            </svg>
+        </div>
     </div>
     <h3>PPT 精细化调整</h3>
 
@@ -1311,6 +1321,7 @@
         if (!historyMap[currentPage]) {
             historyMap[currentPage] = { undo: [], redo: [] };
         }
+        updateHistoryButtons();
 
         // 1. 同步加载蒙版和文本（先加到画布上）
         // 加载蒙版
@@ -1485,10 +1496,10 @@
             // --- 键盘箭头移动（在选中对象时生效） ---
             window.addEventListener('keydown', function(e) {
                 // 撤销/重做快捷键
-                if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
+                if (e.ctrlKey && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
                     doUndo(); e.preventDefault(); return;
                 }
-                if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) {
+                if ((e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (e.ctrlKey && (e.key === 'y' || e.key === 'Y'))) {
                     doRedo(); e.preventDefault(); return;
                 }
                 // 删除选中对象（文本或蒙版）
@@ -1996,6 +2007,18 @@
     }
 
     // ---------- 历史（Undo / Redo）实现 ----------
+    const HISTORY_LIMIT = 5; // 固定保留最近 5 步，超出后丢弃最旧
+
+    function updateHistoryButtons() {
+        try {
+            const h = historyMap[currentPageGlobal];
+            const undoBtn = document.querySelector('.imgedit-history-btn[onclick="doUndo()"]');
+            const redoBtn = document.querySelector('.imgedit-history-btn[onclick="doRedo()"]');
+            if (undoBtn) undoBtn.style.opacity = (!h || h.undo.length <= 1) ? '.35' : '1';
+            if (redoBtn) redoBtn.style.opacity = (!h || h.redo.length === 0) ? '.35' : '1';
+        } catch (e) {}
+    }
+
     function getPagePayload() {
         let texts = [];
         let masks = [];
@@ -2057,10 +2080,12 @@
             }
 
             undoStack.push(snap);
+            if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
             console.log('History pushed. Page:', pageNum, 'Stack size:', undoStack.length);
             
             // 新操作后清空 redo
             historyMap[pageNum].redo = [];
+            updateHistoryButtons();
         } catch (e) { console.log('pushHistory error', e); }
     }
 
@@ -2082,6 +2107,7 @@
             restoreCanvasState(prev);
             
             console.log('Undo. New Stack size:', h.undo.length);
+            updateHistoryButtons();
         } catch (e) { console.log('undo error', e); isRestoringHistory = false; }
     }
 
@@ -2098,6 +2124,7 @@
             restoreCanvasState(next);
             
             console.log('Redo. New Stack size:', h.undo.length);
+            updateHistoryButtons();
         } catch (e) { console.log('redo error', e); isRestoringHistory = false; }
     }
 

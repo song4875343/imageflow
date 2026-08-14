@@ -333,6 +333,80 @@ export function createPlanEditor(options) {
     const data = currentData();
     data.hiddenItemIds = [...quickHiddenIds];
   }
+
+  const HISTORY_LIMIT = 5;
+  let undoStack = [];
+  let redoStack = [];
+
+  function editorSnapshot() {
+    return JSON.stringify({ height: getActiveModel()?.height, editor: currentData() });
+  }
+
+  function updateHistoryButtons() {
+    const undoButton = document.querySelector('#undoButton');
+    const redoButton = document.querySelector('#redoButton');
+    if (undoButton) undoButton.disabled = undoStack.length === 0;
+    if (redoButton) redoButton.disabled = redoStack.length === 0;
+  }
+
+  function pushUndo() {
+    const snap = editorSnapshot();
+    const last = undoStack[undoStack.length - 1];
+    if (last !== snap) {
+      undoStack.push(snap);
+      if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+      redoStack.length = 0;
+      updateHistoryButtons();
+    }
+  }
+
+  function restoreEditorSnapshot(json) {
+    const model = getActiveModel();
+    if (!model) return;
+    const parsed = JSON.parse(json);
+    model.height = parsed.height ?? model.height;
+    model.editor = parsed.editor;
+    ensureEditorData(model);
+    const data = currentData();
+    quickHiddenIds = new Set(data.hiddenItemIds || []);
+    syncHiddenIds();
+    clearSelection();
+    activeKind = '';
+    mode = 'select';
+    selectedMullion = null;
+    draggedMullion = null;
+    movingId = '';
+    blueprintVisible.checked = data.background?.visible !== false;
+    orthogonalSnap.checked = data.orthogonalSnap !== false;
+    updateCategoryButtons();
+    showProperties();
+    renderAll();
+    if (!enabled) {
+      const hasEditorData = Array.isArray(model.editor?.items);
+      architecture.visible = !hasEditorData;
+      furniture.visible = !hasEditorData;
+      group.visible = hasEditorData;
+      renderAll();
+    }
+    syncPanel();
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(editorSnapshot());
+    if (redoStack.length > HISTORY_LIMIT) redoStack.shift();
+    const prev = undoStack.pop();
+    restoreEditorSnapshot(prev);
+  }
+
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(editorSnapshot());
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    const next = redoStack.pop();
+    restoreEditorSnapshot(next);
+  }
   function currentItem() { return currentData().items.find(item => item.id === selectedId); }
   function selectedItems() { return currentData().items.filter(item => selectedIds.has(item.id)); }
   function currentFloor() { return currentData().items.find(item => item.kind === 'floor'); }
@@ -1262,7 +1336,10 @@ export function createPlanEditor(options) {
     if (options.max !== undefined) input.max = String(options.max);
     const unit = document.createElement('output');
     unit.textContent = options.unit || 'm';
+    let recorded = false;
+    input.addEventListener('focus', () => { recorded = false; });
     input.addEventListener('input', () => {
+      if (!recorded) { recorded = true; pushUndo(); }
       const number = Number(input.value);
       if (Number.isFinite(number)) onInput(number);
     });
@@ -1288,7 +1365,12 @@ export function createPlanEditor(options) {
     if (mixed) { const option = document.createElement('option'); option.value = ''; option.textContent = '多值'; input.appendChild(option); }
     choices.forEach(([choiceValue, choiceLabel]) => { const option = document.createElement('option'); option.value = choiceValue; option.textContent = choiceLabel; input.appendChild(option); });
     input.value = value;
-    input.addEventListener('change', () => onInput(input.value));
+    let recorded = false;
+    input.addEventListener('focus', () => { recorded = false; });
+    input.addEventListener('change', () => {
+      if (!recorded) { recorded = true; pushUndo(); }
+      onInput(input.value);
+    });
     const unit = document.createElement('output'); unit.textContent = '';
     wrapper.append(name, input, unit); properties.appendChild(wrapper);
   }
@@ -1300,8 +1382,17 @@ export function createPlanEditor(options) {
     const controls = document.createElement('span'); controls.className = 'editor-color-opacity-controls';
     const colorInput = document.createElement('input'); colorInput.type = 'color'; colorInput.value = /^#[0-9a-f]{6}$/i.test(colorValue || '') ? colorValue : '#678c87';
     const opacityInput = document.createElement('input'); opacityInput.type = 'number'; opacityInput.min = '0'; opacityInput.max = '1'; opacityInput.step = '0.05'; opacityInput.value = String(round(opacityValue)); opacityInput.title = '透明度'; opacityInput.setAttribute('aria-label', `${label}透明度`);
-    colorInput.addEventListener('input', () => onColorInput(colorInput.value));
-    opacityInput.addEventListener('input', () => { const value = Number(opacityInput.value); if (Number.isFinite(value)) onOpacityInput(Math.min(1, Math.max(0, value))); });
+    let colorRecorded = false, opacityRecorded = false;
+    colorInput.addEventListener('focus', () => { colorRecorded = false; });
+    colorInput.addEventListener('input', () => {
+      if (!colorRecorded) { colorRecorded = true; pushUndo(); }
+      onColorInput(colorInput.value);
+    });
+    opacityInput.addEventListener('focus', () => { opacityRecorded = false; });
+    opacityInput.addEventListener('input', () => {
+      if (!opacityRecorded) { opacityRecorded = true; pushUndo(); }
+      const value = Number(opacityInput.value); if (Number.isFinite(value)) onOpacityInput(Math.min(1, Math.max(0, value)));
+    });
     controls.append(colorInput, opacityInput);
     wrapper.append(name, controls); properties.appendChild(wrapper);
   }
@@ -1332,6 +1423,7 @@ export function createPlanEditor(options) {
         button.title = '启用后可在图面中拖动选中构件';
       }
       button.addEventListener('click', () => {
+        if (action !== 'move') pushUndo();
         if (action === 'copy') {
           const duplicates = items.map(item => {
             const duplicate = clone(item);
@@ -1384,6 +1476,7 @@ export function createPlanEditor(options) {
       });
       disposeObject(object);
     });
+    pushUndo();
     data.items = data.items.filter(item => !sources.includes(item)).concat(exploded);
     selectedIds = new Set(exploded.map(item => item.id)); selectedId = exploded.at(-1)?.id || '';
     showProperties(); renderAll();
@@ -1413,6 +1506,7 @@ export function createPlanEditor(options) {
       disposeObject(object);
     });
     const group = { id: makeId('other'), kind: 'other', componentType: 'other', position: [round(center[0]), round(center[1])], size: [1, 1], height: 1, parts };
+    pushUndo();
     currentData().items = currentData().items.filter(item => !items.includes(item)).concat(group);
     selectedIds = new Set([group.id]); selectedId = group.id; showProperties(); renderAll();
   }
@@ -1455,6 +1549,7 @@ export function createPlanEditor(options) {
       remove.type = 'button';
       remove.textContent = '删除底图';
       remove.addEventListener('click', () => {
+        pushUndo();
         delete currentData().background;
         activeKind = '';
         clearSelection();
@@ -1537,7 +1632,7 @@ export function createPlanEditor(options) {
       structureButtons(selection);
       const remove = document.createElement('button');
       remove.className = 'editor-delete'; remove.type = 'button'; remove.textContent = `删除选中构件 (${selection.length})`;
-      remove.addEventListener('click', () => { data.items = data.items.filter(item => !selectedIds.has(item.id)); clearSelection(); showProperties(); renderAll(); });
+      remove.addEventListener('click', () => { pushUndo(); data.items = data.items.filter(item => !selectedIds.has(item.id)); clearSelection(); showProperties(); renderAll(); });
       properties.appendChild(remove);
       return;
     }
@@ -1549,7 +1644,7 @@ export function createPlanEditor(options) {
       field('厚度', item.height ?? 0.1, value => { item.height = Math.max(0.02, value); renderAll(); }, { min: 0.02 });
       const remove = document.createElement('button');
       remove.className = 'editor-delete'; remove.type = 'button'; remove.textContent = '删除选中地板';
-      remove.addEventListener('click', () => { currentData().items = currentData().items.filter(candidate => candidate.id !== item.id); activeKind = ''; clearSelection(); updateCategoryButtons(); showProperties(); renderAll(); });
+      remove.addEventListener('click', () => { pushUndo(); currentData().items = currentData().items.filter(candidate => candidate.id !== item.id); activeKind = ''; clearSelection(); updateCategoryButtons(); showProperties(); renderAll(); });
       properties.appendChild(remove); return;
     }
     if (item?.kind === 'camera') {
@@ -1566,7 +1661,7 @@ export function createPlanEditor(options) {
       viewButton.addEventListener('click', () => cameraView(item)); properties.appendChild(viewButton);
       const remove = document.createElement('button');
       remove.className = 'editor-delete'; remove.type = 'button'; remove.textContent = '删除选中相机';
-      remove.addEventListener('click', () => { currentData().items = currentData().items.filter(candidate => candidate.id !== item.id); clearSelection(); showProperties(); renderAll(); });
+      remove.addEventListener('click', () => { pushUndo(); currentData().items = currentData().items.filter(candidate => candidate.id !== item.id); clearSelection(); showProperties(); renderAll(); });
       properties.appendChild(remove); return;
     }
     if (item) {
@@ -1628,6 +1723,7 @@ export function createPlanEditor(options) {
             movingId = '';
             selectedMullion = null;
           } else {
+            pushUndo();
             if (item.mullionMode !== 'manual') item.mullionOffsets = [...automaticMullionOffsets(item)];
             item.mullionMode = 'manual';
             item.mullionDoorSignature = curtainDoorSignature(item);
@@ -1642,6 +1738,7 @@ export function createPlanEditor(options) {
           autoButton.type = 'button';
           autoButton.textContent = '恢复自动排布';
           autoButton.addEventListener('click', () => {
+            pushUndo();
             item.mullionMode = 'auto';
             delete item.mullionOffsets;
             delete item.mullionDoorSignature;
@@ -1659,6 +1756,7 @@ export function createPlanEditor(options) {
       remove.type = 'button';
       remove.textContent = '删除选中物体';
       remove.addEventListener('click', () => {
+        pushUndo();
         data.items = data.items.filter(candidate => candidate.id !== item.id && candidate.hostWallId !== item.id);
         clearSelection();
         showProperties();
@@ -1855,6 +1953,7 @@ export function createPlanEditor(options) {
     draftItem.position = [round(center[0]), round(center[1])];
     draftItem.points = draftItem.points.map(point => [round(point[0] - center[0]), round(point[1] - center[1])]);
     delete draftItem.previewPoint;
+    pushUndo();
     currentData().items.push(draftItem);
     currentData().emptySpace = true;
     selectedId = draftItem.id;
@@ -1889,6 +1988,7 @@ export function createPlanEditor(options) {
         return;
       }
       const item = { id: makeId(activeKind), kind: activeKind, componentType: activeKind, material: DEFAULT_MATERIALS[activeKind], position: wallPoint(wall, along), size: [definition.length, wall.size[1]], height: definition.height, roomHeight: getActiveModel().height, sillHeight: activeKind === 'window' ? definition.sillHeight ?? 0.66 : 0, openAngle: activeKind === 'door' ? definition.openAngle ?? 0 : undefined, rotation: wall.rotation || 0, hostWallId: wall.id, hostWallKind: wall.kind, wallSide: wall.wallSide || wall.sourceWall, sourceWall: wall.wallSide || wall.sourceWall, mirrorX: false, mirrorZ: false };
+      pushUndo();
       currentData().items.push(item);
       selectedId = item.id; selectedIds = new Set([item.id]); activeKind = ''; mode = 'select';
       updateCategoryButtons(); showProperties(); renderAll();
@@ -1935,6 +2035,7 @@ export function createPlanEditor(options) {
       document.querySelector('.hint').textContent = TYPES[activeKind].label + ' · 移动鼠标预览，再次点击确定';
     } else {
       updateDraft(point);
+      pushUndo();
       currentData().items.push(draftItem);
       selectedId = draftItem.id;
       selectedIds = new Set([draftItem.id]);
@@ -2082,10 +2183,12 @@ export function createPlanEditor(options) {
 
   canvas.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
-    if (!enabled && quickHideMode) {
+    if (quickHideMode) {
       event.preventDefault();
+      if (enabled) event.stopImmediatePropagation();
       const id = pick(event);
       if (id) {
+        pushUndo();
         quickHiddenIds.add(id);
         syncHiddenIds();
         renderAll();
@@ -2111,6 +2214,7 @@ export function createPlanEditor(options) {
         selectedMullion = { wallId: wall.id, index: mullionIndex };
         const startAlong = curtainMullionOffsets(wall)[mullionIndex];
         draggedMullion = { wall, index: mullionIndex, screenDrag: mullionScreenDrag(wall, startAlong, event) };
+        pushUndo();
         dragging = true;
         controls.enabled = false;
         canvas.setPointerCapture?.(event.pointerId);
@@ -2123,6 +2227,7 @@ export function createPlanEditor(options) {
       const background = currentData().background;
       dragOffset.set(point.x - background.position[0], 0, point.z - background.position[1]);
       dragStartPosition = [...background.position];
+      pushUndo();
       dragging = true;
       controls.enabled = false;
       return;
@@ -2156,6 +2261,7 @@ export function createPlanEditor(options) {
       selectedItems().filter(candidate => HOST_WALL_KINDS.has(candidate.kind)).forEach(wall => currentData().items.filter(candidate => candidate.hostWallId === wall.id).forEach(opening => {
         if (!dragStartPositions.has(opening.id)) dragStartPositions.set(opening.id, { position: [...opening.position], target: null });
       }));
+      pushUndo();
       dragging = true;
       controls.enabled = false;
     }
@@ -2239,6 +2345,7 @@ export function createPlanEditor(options) {
     });
     const model = getActiveModel();
     const width = model.width;
+    pushUndo();
     currentData().background = { name: file.name, dataUrl, visible: true, position: [0, 0], width, depth: round(width * image.height / image.width), rotation: 0, opacity: 0.45 };
     blueprintVisible.checked = true;
     activeKind = 'background';
@@ -2249,7 +2356,9 @@ export function createPlanEditor(options) {
 
   blueprintVisible.addEventListener('change', () => {
     const background = currentData().background;
-    if (background) background.visible = blueprintVisible.checked;
+    if (!background) return;
+    pushUndo();
+    background.visible = blueprintVisible.checked;
     renderAll();
   });
 
@@ -2314,16 +2423,32 @@ export function createPlanEditor(options) {
 
   document.querySelector('#editView').addEventListener('click', () => enabled ? exit() : enter());
 
+  document.querySelector('#undoButton').addEventListener('click', undo);
+  document.querySelector('#redoButton').addEventListener('click', redo);
+  addEventListener('keydown', event => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) redo(); else undo();
+      return;
+    }
+    if (key === 'y') { event.preventDefault(); redo(); }
+  });
+
   return {
     get enabled() { return enabled; },
     getQuickHideMode() { return quickHideMode; },
+    pushHistory() { pushUndo(); },
     clearQuickHidden() {
+      pushUndo();
       quickHiddenIds.clear();
       syncHiddenIds();
       renderAll();
     },
     getHiddenItemIds() { return [...quickHiddenIds]; },
     setHiddenItemIds(ids) {
+      pushUndo();
       quickHiddenIds = new Set(Array.isArray(ids) ? ids : []);
       syncHiddenIds();
       renderAll();
@@ -2385,6 +2510,7 @@ export function createPlanEditor(options) {
       return Object.fromEntries(['north', 'south', 'east', 'west'].map(side => [side, data.wallVisibility?.[side] !== false]));
     },
     setWallVisibility(side, visible) {
+      pushUndo();
       const data = currentData();
       data.wallVisibility ||= {};
       data.wallVisibility[side] = Boolean(visible);
@@ -2395,6 +2521,7 @@ export function createPlanEditor(options) {
       return Boolean(currentData().ceilingVisible);
     },
     setCeilingVisibility(visible) {
+      pushUndo();
       currentData().ceilingVisible = Boolean(visible);
       renderAll();
       return currentData().ceilingVisible;

@@ -458,7 +458,9 @@ function applyRoomHeight(clampValue = false) {
   let height = Number(roomHeightInput.value);
   if (!Number.isFinite(height) || (!clampValue && (height < 2 || height > 12))) return;
   height = Math.min(12, Math.max(2, height || activeModel.height));
+  if (height === activeModel.height) return;
   const previousHeight = activeModel.height;
+  planEditor.pushHistory();
   activeModel.height = Math.round(height * 10) / 10;
   planEditor.syncRoomHeight(activeModel.height, previousHeight);
   renderModel(activeModel);
