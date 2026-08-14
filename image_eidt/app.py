@@ -350,10 +350,10 @@ class ImageEditorAPI:
         try:
             config = json.loads(self._theme_file().read_text(encoding="utf-8"))
             return json.dumps(
-                {"theme": config.get("theme", "dark")}, ensure_ascii=False
+                {"theme": config.get("theme", "light")}, ensure_ascii=False
             )
         except Exception:
-            return json.dumps({"theme": "dark"}, ensure_ascii=False)
+            return json.dumps({"theme": "light"}, ensure_ascii=False)
 
     def set_theme(self, theme):
         theme = "dark" if str(theme).lower() == "dark" else "light"

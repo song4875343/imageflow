@@ -2958,7 +2958,7 @@
         document.querySelectorAll('#imgedit-toolbar .imgedit-nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
     }
     function getThemePreference() {
-        try { return localStorage.getItem('imgedit-theme') || 'dark'; } catch (_) { return 'dark'; }
+        try { return localStorage.getItem('imgedit-theme') || 'light'; } catch (_) { return 'light'; }
     }
     function setThemePreference(theme) {
         try { localStorage.setItem('imgedit-theme', theme); } catch (_) {}
@@ -2993,7 +2993,7 @@
         try {
             const raw = await pywebview.api.get_theme();
             const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            if (result && result.theme && result.theme !== currentTheme) applyTheme(result.theme, false);
+            if (result && result.theme && result.theme !== currentTheme) applyTheme(result.theme, true);
         } catch (_) {}
     }
     function focusRoomspace() {
@@ -3142,7 +3142,9 @@
     window.saveImageFile = saveImageFile;
 
     // 启动时应用主题并默认显示空间设计
-    applyTheme(currentTheme);
+    // 先用本地偏好渲染（不写盘，避免覆盖上次关闭时保存的主题），
+    // 再以后端 theme.json 记录的“上次关闭主题”为准；无记录时默认亮色
+    applyTheme(currentTheme, false);
     loadThemeFromBackend();
     focusRoomspace();
 </script>
