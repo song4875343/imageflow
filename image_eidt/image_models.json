@@ -1,5 +1,5 @@
 {
-  "current_model": "yunqiao::gpt-image-2",
+  "current_model": "jojo::gpt-image-2",
   "models": [
     {
       "id": "jojo::gpt-image-2",
@@ -14,27 +14,6 @@
       "provider": "未设置",
       "baseurl": "http://127.0.0.1:8045/v1",
       "key": "sk-23d3453d5efb42ec9ea3ada74f38a41b"
-    },
-    {
-      "id": "未设置::Qwen/Qwen-Image-2512",
-      "model": "Qwen/Qwen-Image-2512",
-      "provider": "未设置",
-      "baseurl": "https://api-inference.modelscope.cn/v1",
-      "key": "ms-6d4af5ff-2490-4f33-96b7-8405c820cbdf"
-    },
-    {
-      "id": "未设置::Qwen/Qwen-Image-Edit-2511",
-      "model": "Qwen/Qwen-Image-Edit-2511",
-      "provider": "未设置",
-      "baseurl": "https://api-inference.modelscope.cn/v1",
-      "key": "ms-6d4af5ff-2490-4f33-96b7-8405c820cbdf"
-    },
-    {
-      "id": "未设置::Tongyi-MAI/Z-Image-Turbo",
-      "model": "Tongyi-MAI/Z-Image-Turbo",
-      "provider": "未设置",
-      "baseurl": "https://api-inference.modelscope.cn/v1",
-      "key": "ms-6d4af5ff-2490-4f33-96b7-8405c820cbdf"
     },
     {
       "id": "yunqiao::gpt-image-2",

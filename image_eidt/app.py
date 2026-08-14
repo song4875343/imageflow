@@ -218,6 +218,7 @@ class ImageEditorAPI:
         output_preset=None,
         aspect_ratio=None,
         full_image_edit=False,
+        count=1,
     ):
         if self.image is None:
             return json.dumps({"error": "请先打开图片"}, ensure_ascii=False)
@@ -249,7 +250,7 @@ class ImageEditorAPI:
                         "RGB"
                     )
                 )
-            overlay, box = generate_correction_overlay(
+            overlays = generate_correction_overlay(
                 edit_source,
                 (x, y, x + w, y + h),
                 prompt=prompt,
@@ -260,31 +261,43 @@ class ImageEditorAPI:
                 reference_images=reference_images,
                 generation_options=generation_options,
                 full_image_edit=bool(full_image_edit),
+                count=max(1, int(count or 1)),
             )
-            ox1, oy1, ox2, oy2 = box
-            return json.dumps(
-                {
-                    "id": uuid.uuid4().hex,
-                    "assetId": uuid.uuid4().hex,
-                    "target": {"x": x, "y": y, "w": w, "h": h},
-                    "overlay": {"x": ox1, "y": oy1, "w": ox2 - ox1, "h": oy2 - oy1},
-                    "imageData": _data_url(overlay),
-                    "submittedModelId": selected_model["id"],
-                    "submittedModel": selected_model["model"],
-                    "submittedProvider": selected_model["provider"],
-                }
-            )
+            results = []
+            for overlay, box in overlays:
+                ox1, oy1, ox2, oy2 = box
+                results.append(
+                    {
+                        "id": uuid.uuid4().hex,
+                        "assetId": uuid.uuid4().hex,
+                        "target": {"x": x, "y": y, "w": w, "h": h},
+                        "overlay": {
+                            "x": ox1,
+                            "y": oy1,
+                            "w": ox2 - ox1,
+                            "h": oy2 - oy1,
+                        },
+                        "imageData": _data_url(overlay),
+                        "submittedModelId": selected_model["id"],
+                        "submittedModel": selected_model["model"],
+                        "submittedProvider": selected_model["provider"],
+                    }
+                )
+            if len(results) == 1:
+                return json.dumps(results[0])
+            return json.dumps({"results": results}, ensure_ascii=False)
         except OutputSizeMismatch as exc:
-            raw_image = exc.image.convert("RGB")
             protect_selection = bool(selection_mask) and not full_image_edit
             has_selection_mask = protect_selection
-            resolved_image = (
-                composite_selection_result(edit_source, raw_image, selection_mask)
-                if protect_selection
-                else raw_image
-            )
-            return json.dumps(
-                {
+            mismatch_results = []
+            for mismatch_image in exc.images:
+                raw_image = mismatch_image.convert("RGB")
+                resolved_image = (
+                    composite_selection_result(edit_source, raw_image, selection_mask)
+                    if protect_selection
+                    else raw_image
+                )
+                mismatch_results.append({
                     "error": "size_mismatch",
                     "message": str(exc),
                     "requested": {
@@ -292,8 +305,8 @@ class ImageEditorAPI:
                         "height": exc.requested_size[1],
                     },
                     "actual": {
-                        "width": exc.actual_size[0],
-                        "height": exc.actual_size[1],
+                        "width": raw_image.width,
+                        "height": raw_image.height,
                     },
                     "baseurl": exc.baseurl,
                     "id": uuid.uuid4().hex,
@@ -302,15 +315,20 @@ class ImageEditorAPI:
                     "overlay": {
                         "x": 0,
                         "y": 0,
-                        "w": exc.actual_size[0],
-                        "h": exc.actual_size[1],
+                        "w": raw_image.width,
+                        "h": raw_image.height,
                     },
                     "imageData": _data_url(resolved_image),
                     "rawImageData": _data_url(raw_image),
                     "hasSelectionMask": has_selection_mask,
-                },
-                ensure_ascii=False,
-            )
+                    "submittedModelId": selected_model["id"],
+                    "submittedModel": selected_model["model"],
+                    "submittedProvider": selected_model["provider"],
+                })
+            payload = dict(mismatch_results[0])
+            if len(mismatch_results) > 1:
+                payload["results"] = mismatch_results
+            return json.dumps(payload, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
         finally:

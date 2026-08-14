@@ -26,8 +26,9 @@ MIN_MATCH_CONFIDENCE = 0.80
 
 
 class OutputSizeMismatch(RuntimeError):
-    def __init__(self, image, requested_size, actual_size, baseurl):
+    def __init__(self, image, requested_size, actual_size, baseurl, images=None):
         self.image = image
+        self.images = list(images or [image])
         self.requested_size = tuple(requested_size)
         self.actual_size = tuple(actual_size)
         self.baseurl = baseurl
@@ -43,6 +44,17 @@ TEXT_TO_IMAGE_MODELS = {
     "tongyi-mai/z-image-turbo",
 }
 
+GEMINI_1K_SIZES = {
+    "1:1": (1024, 1024),
+    "2:3": (848, 1264),
+    "3:2": (1264, 848),
+    "3:4": (896, 1200),
+    "4:3": (1200, 896),
+    "9:16": (768, 1376),
+    "16:9": (1376, 768),
+    "21:9": (1584, 672),
+}
+
 PATCH_PROMPT = (
     "Edit this image crop and return the complete crop without any text. Remove every visible "
     "or faint title, body character, number, punctuation mark, and partial glyph. Reconstruct "
@@ -54,9 +66,11 @@ PATCH_PROMPT = (
 
 UNSET_PROVIDER = "未设置"
 
+
 def image_model_id(model, provider=UNSET_PROVIDER):
     normalized_provider = str(provider).strip() or UNSET_PROVIDER
     return f"{normalized_provider}::{str(model).strip()}"
+
 
 def load_image_model_config():
     """Load the global current model and configured image endpoints."""
@@ -116,7 +130,15 @@ def save_image_models(models, current_model=None):
         if not model or not baseurl or not key or item_id in seen:
             continue
         seen.add(item_id)
-        normalized.append({"id": item_id, "model": model, "provider": provider, "baseurl": baseurl, "key": key})
+        normalized.append(
+            {
+                "id": item_id,
+                "model": model,
+                "provider": provider,
+                "baseurl": baseurl,
+                "key": key,
+            }
+        )
     if not normalized:
         raise ValueError("至少需要保留一个模型")
     ids = {item["id"] for item in normalized}
@@ -126,18 +148,28 @@ def save_image_models(models, current_model=None):
         selected = legacy["id"] if legacy else normalized[0]["id"]
     payload = {"current_model": selected, "models": normalized}
     temporary = MODEL_CONFIG_PATH.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     temporary.replace(MODEL_CONFIG_PATH)
     return normalized
 
 
 def add_image_model(baseurl, key, model, provider="未设置"):
-    values = {"model": str(model).strip(), "provider": str(provider).strip(), "baseurl": str(baseurl).strip(), "key": str(key).strip()}
+    values = {
+        "model": str(model).strip(),
+        "provider": str(provider).strip(),
+        "baseurl": str(baseurl).strip(),
+        "key": str(key).strip(),
+    }
     if not all(values.values()):
         raise ValueError("模型名称?服务商?Base URL 和 Key 均不能为空")
     config = load_image_model_config()
     models = config["models"]
-    if any(item["model"] == values["model"] and item["provider"] == values["provider"] for item in models):
+    if any(
+        item["model"] == values["model"] and item["provider"] == values["provider"]
+        for item in models
+    ):
         raise ValueError(f"模型 {values['model']}?{values['provider']}?已存在")
     values["id"] = image_model_id(values["model"], values["provider"])
     models.append(values)
@@ -200,7 +232,23 @@ def get_model_config(model=None):
 
 
 def image_model_capability(model):
-    return "text-to-image" if str(model).strip().lower() in TEXT_TO_IMAGE_MODELS else "image-edit"
+    return (
+        "text-to-image"
+        if str(model).strip().lower() in TEXT_TO_IMAGE_MODELS
+        else "image-edit"
+    )
+
+
+def gemini_output_size(image_size, aspect_ratio):
+    normalized_size = str(image_size or "1K").strip().upper()
+    normalized_ratio = str(aspect_ratio or "1:1").strip()
+    if normalized_size not in {"1K", "2K"}:
+        raise ValueError(f"Gemini 不支持的生成档位: {normalized_size}")
+    if normalized_ratio not in GEMINI_1K_SIZES:
+        raise ValueError(f"Gemini 不支持的宽高比: {normalized_ratio}")
+    multiplier = 2 if normalized_size == "2K" else 1
+    width, height = GEMINI_1K_SIZES[normalized_ratio]
+    return width * multiplier, height * multiplier
 
 
 def _model_client(config):
@@ -214,8 +262,20 @@ def _check_cancelled(cancel_check):
         raise RuntimeError("修改已终止")
 
 
-def _modelscope_image_edit(image, prompt, config, cancel_check=None, output_size=None, reference_images=None):
-    """Call ModelScope's asynchronous image generation or editing API."""
+def _modelscope_image_edit(
+    image,
+    prompt,
+    config,
+    cancel_check=None,
+    output_size=None,
+    reference_images=None,
+    count=1,
+):
+    """Call ModelScope's asynchronous image generation or editing API.
+
+    ModelScope's OpenAI-compatible image endpoints do not expose a parameter
+    to request several images in one call, so we submit ``count`` tasks.
+    """
     if image_model_capability(config["model"]) == "text-to-image":
         raise ValueError(
             f"{config['model']} 仅支持文生图，不能用于专家图像修改；ModelScope Base URL 与子路由均正确。"
@@ -224,68 +284,91 @@ def _modelscope_image_edit(image, prompt, config, cancel_check=None, output_size
     base_url = config["baseurl"].rstrip("/")
     if not base_url.lower().endswith("/v1"):
         base_url += "/v1"
-    image_stream = image_file(image.convert("RGB"), "reference.png")
-    image_data = "data:image/png;base64," + base64.b64encode(image_stream.read()).decode("ascii")
-    image_stream.close()
     headers = {
         "Authorization": f"Bearer {config['key']}",
         "Content-Type": "application/json",
         "X-ModelScope-Async-Mode": "true",
     }
-    payload = {
-        "model": config["model"],
-        "prompt": prompt,
-        "size": f"{output_size[0]}x{output_size[1]}" if output_size else f"{image.width}x{image.height}",
-    }
-    reference_data = []
-    for index, reference in enumerate(reference_images or []):
-        reference_stream = image_file(reference.convert("RGB"), f"reference-{index}.png")
-        try:
-            reference_data.append("data:image/png;base64," + base64.b64encode(reference_stream.read()).decode("ascii"))
-        finally:
-            reference_stream.close()
-    payload["image_url"] = [image_data, *reference_data]
-    response = requests.post(
-        f"{base_url}/images/generations", headers=headers, json=payload, timeout=60
-    )
-    _check_cancelled(cancel_check)
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        detail = response.text[:800]
-        raise RuntimeError(f"ModelScope 请求失败: {detail}") from exc
-    task_id = (response.json() or {}).get("task_id")
-    if not task_id:
-        raise RuntimeError("ModelScope 未返回 task_id")
-
     task_headers = {
         "Authorization": f"Bearer {config['key']}",
         "X-ModelScope-Task-Type": "image_generation",
     }
-    # ModelScope edit models can remain queued for several minutes at busy times.
-    for _ in range(180):
-        _check_cancelled(cancel_check)
-        result = requests.get(
-            f"{base_url}/tasks/{task_id}", headers=task_headers, timeout=30
+    reference_data = []
+    for index, reference in enumerate(reference_images or []):
+        reference_stream = image_file(
+            reference.convert("RGB"), f"reference-{index}.png"
         )
-        result.raise_for_status()
-        data = result.json() or {}
-        status = str(data.get("task_status", "")).upper()
-        if status == "SUCCEED":
-            outputs = data.get("output_images") or []
-            if not outputs:
-                raise RuntimeError("ModelScope 任务成功但没有返回图片")
-            output = outputs[0]
-            if isinstance(output, str) and output.startswith("data:image/"):
-                encoded = output.split(",", 1)[1]
-                return Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
-            image_response = requests.get(str(output), timeout=60)
-            image_response.raise_for_status()
-            return Image.open(BytesIO(image_response.content)).convert("RGB")
-        if status == "FAILED":
-            raise RuntimeError(f"ModelScope 图像任务失败: {data.get('message') or data.get('error') or data}")
-        time.sleep(5)
-    raise TimeoutError("ModelScope 图像任务等待超过 15 分钟")
+        try:
+            reference_data.append(
+                "data:image/png;base64,"
+                + base64.b64encode(reference_stream.read()).decode("ascii")
+            )
+        finally:
+            reference_stream.close()
+    count = max(1, int(count or 1))
+    results = []
+    for _ in range(count):
+        _check_cancelled(cancel_check)
+        image_stream = image_file(image.convert("RGB"), "reference.png")
+        image_data = "data:image/png;base64," + base64.b64encode(
+            image_stream.read()
+        ).decode("ascii")
+        image_stream.close()
+        payload = {
+            "model": config["model"],
+            "prompt": prompt,
+            "size": f"{output_size[0]}x{output_size[1]}"
+            if output_size
+            else f"{image.width}x{image.height}",
+            "image_url": [image_data, *reference_data],
+        }
+        response = requests.post(
+            f"{base_url}/images/generations", headers=headers, json=payload, timeout=60
+        )
+        _check_cancelled(cancel_check)
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            detail = response.text[:800]
+            raise RuntimeError(f"ModelScope 请求失败: {detail}") from exc
+        task_id = (response.json() or {}).get("task_id")
+        if not task_id:
+            raise RuntimeError("ModelScope 未返回 task_id")
+
+        # ModelScope edit models can remain queued for several minutes at busy times.
+        for _ in range(180):
+            _check_cancelled(cancel_check)
+            result = requests.get(
+                f"{base_url}/tasks/{task_id}", headers=task_headers, timeout=30
+            )
+            result.raise_for_status()
+            data = result.json() or {}
+            status = str(data.get("task_status", "")).upper()
+            if status == "SUCCEED":
+                outputs = data.get("output_images") or []
+                if not outputs:
+                    raise RuntimeError("ModelScope 任务成功但没有返回图片")
+                output = outputs[0]
+                if isinstance(output, str) and output.startswith("data:image/"):
+                    encoded = output.split(",", 1)[1]
+                    results.append(
+                        Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+                    )
+                else:
+                    image_response = requests.get(str(output), timeout=60)
+                    image_response.raise_for_status()
+                    results.append(
+                        Image.open(BytesIO(image_response.content)).convert("RGB")
+                    )
+                break
+            if status == "FAILED":
+                raise RuntimeError(
+                    f"ModelScope 图像任务失败: {data.get('message') or data.get('error') or data}"
+                )
+            time.sleep(5)
+        else:
+            raise TimeoutError("ModelScope 图像任务等待超过 15 分钟")
+    return results
 
 
 def encode_data_url(image_bytes, image_format):
@@ -314,6 +397,35 @@ def extract_data_image(value):
             if image is not None:
                 return image
     return None
+
+
+def extract_data_images(value):
+    """Return every unique data-URL image contained in an API response."""
+    encoded_images = []
+    seen = set()
+
+    def visit(child):
+        if isinstance(child, str):
+            for match in re.finditer(
+                r"data:image/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})",
+                child,
+            ):
+                encoded = match.group(1)
+                if encoded not in seen:
+                    seen.add(encoded)
+                    encoded_images.append(encoded)
+        elif isinstance(child, dict):
+            for nested in child.values():
+                visit(nested)
+        elif isinstance(child, (list, tuple)):
+            for nested in child:
+                visit(nested)
+
+    visit(value)
+    return [
+        Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+        for encoded in encoded_images
+    ]
 
 
 def _clamp_box(box, width, height):
@@ -360,9 +472,13 @@ def composite_selection_result(source, generated, selection_mask):
     protected = source.convert("RGB")
     if protected.size != generated.size:
         protected = protected.resize(generated.size, Image.Resampling.LANCZOS)
-    mask = np.asarray(decode_selection_mask(selection_mask, generated.size), dtype=np.uint8).copy()
+    mask = np.asarray(
+        decode_selection_mask(selection_mask, generated.size), dtype=np.uint8
+    ).copy()
     mask[mask <= 8] = 0
-    return Image.composite(generated.convert("RGB"), protected, Image.fromarray(mask, "L"))
+    return Image.composite(
+        generated.convert("RGB"), protected, Image.fromarray(mask, "L")
+    )
 
 
 def gpt_edit_mask(image, editable_box=None, editable_mask=None):
@@ -386,6 +502,7 @@ def gpt_edit_mask(image, editable_box=None, editable_mask=None):
         rgba_mask[:, :, 3] = 255 - selected
     return Image.fromarray(rgba_mask, "RGBA")
 
+
 def aligned_gpt_output_size(size):
     width, height = (int(size[0]), int(size[1]))
     if width <= 0 or height <= 0:
@@ -405,6 +522,7 @@ def aligned_gpt_output_size(size):
     aligned_width = max(16, int(round(width * scale / 16)) * 16)
     aligned_height = max(16, int(round(height * scale / 16)) * 16)
     return validate_gpt_output_size((aligned_width, aligned_height))
+
 
 def image_file(image, name):
     stream = BytesIO()
@@ -439,29 +557,91 @@ def edit_patch_gpt(
     editable_mask=None,
     output_size=None,
     reference_images=None,
+    count=1,
 ):
+    """Edit with a GPT-image model, returning a list of ``count`` images.
+
+    GPT-image endpoints accept an ``n`` parameter so several images can be
+    generated in one request; when the endpoint rejects or ignores ``n`` we
+    fall back to repeated single-image requests.
+    """
     _check_cancelled(cancel_check)
     config = get_model_config(model)
-    requested_size = validate_gpt_output_size(output_size) if output_size else aligned_gpt_output_size(image.size)
+    requested_size = (
+        validate_gpt_output_size(output_size)
+        if output_size
+        else aligned_gpt_output_size(image.size)
+    )
     enforce_requested_size = output_size is not None
     client = _model_client(config)
     source = image.convert("RGB")
     mask = gpt_edit_mask(source, editable_box, editable_mask)
     source_file = image_file(source, "region.png")
     mask_file = image_file(mask, "mask.png")
-    reference_files = [image_file(reference.convert("RGB"), f"reference-{index}.png") for index, reference in enumerate(reference_images or [])]
+    reference_files = [
+        image_file(reference.convert("RGB"), f"reference-{index}.png")
+        for index, reference in enumerate(reference_images or [])
+    ]
+    count = max(1, int(count or 1))
+
+    def rewind_inputs():
+        for stream in (source_file, mask_file, *reference_files):
+            stream.seek(0)
+
+    def decode_response(response):
+        decoded = []
+        for item in list(getattr(response, "data", None) or []):
+            encoded = (
+                item.get("b64_json")
+                if isinstance(item, dict)
+                else getattr(item, "b64_json", None)
+            )
+            if encoded:
+                decoded.append(
+                    Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+                )
+        return decoded
+
+    generated_list = []
     try:
-        image_input = [source_file, *reference_files] if reference_files else source_file
-        response = client.images.edit(
-            model=config["model"],
-            image=image_input,
-            mask=mask_file,
-            prompt=prompt,
-            quality="high",
-            size=f"{requested_size[0]}x{requested_size[1]}",
-            output_format="png",
-            response_format="b64_json",
+        image_input = (
+            [source_file, *reference_files] if reference_files else source_file
         )
+        if count > 1:
+            try:
+                rewind_inputs()
+                response = client.images.edit(
+                    model=config["model"],
+                    image=image_input,
+                    mask=mask_file,
+                    prompt=prompt,
+                    quality="high",
+                    size=f"{requested_size[0]}x{requested_size[1]}",
+                    output_format="png",
+                    response_format="b64_json",
+                    n=count,
+                )
+                generated_list.extend(decode_response(response))
+            except Exception:
+                generated_list = []
+        while len(generated_list) < count:
+            _check_cancelled(cancel_check)
+            before = len(generated_list)
+            rewind_inputs()
+            response = client.images.edit(
+                model=config["model"],
+                image=image_input,
+                mask=mask_file,
+                prompt=prompt,
+                quality="high",
+                size=f"{requested_size[0]}x{requested_size[1]}",
+                output_format="png",
+                response_format="b64_json",
+                n=1,
+            )
+            generated_list.extend(decode_response(response))
+            if len(generated_list) == before:
+                break
     finally:
         source_file.close()
         mask_file.close()
@@ -469,41 +649,79 @@ def edit_patch_gpt(
             reference_file.close()
     _check_cancelled(cancel_check)
 
-    encoded = getattr(response.data[0], "b64_json", None)
-    if not encoded:
+    if not generated_list:
         raise ValueError(f"{config['model']} response did not contain b64_json")
-    generated = Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+    generated_list = generated_list[:count]
     if enforce_requested_size:
-        if generated.size != requested_size:
+        mismatch = next(
+            (generated for generated in generated_list if generated.size != requested_size),
+            None,
+        )
+        if mismatch is not None:
             raise OutputSizeMismatch(
-                generated,
+                mismatch,
                 requested_size,
-                generated.size,
+                mismatch.size,
                 config["baseurl"],
+                images=generated_list,
             )
-        return generated
-    if generated.size != source.size:
-        generated = generated.resize(source.size, Image.Resampling.LANCZOS)
-    return generated
+    results = []
+    for generated in generated_list:
+        if enforce_requested_size:
+            results.append(generated)
+        else:
+            if generated.size != source.size:
+                generated = generated.resize(source.size, Image.Resampling.LANCZOS)
+            results.append(generated)
+    return results
 
 
-def edit_patch_legacy(image, editable_box=None, prompt=PATCH_PROMPT, model=None, cancel_check=None, output_size=None, reference_images=None, generation_options=None):
+def edit_patch_legacy(
+    image,
+    editable_box=None,
+    prompt=PATCH_PROMPT,
+    model=None,
+    cancel_check=None,
+    output_size=None,
+    reference_images=None,
+    generation_options=None,
+    count=1,
+):
     _check_cancelled(cancel_check)
     config = get_model_config(model)
     client = _model_client(config)
+    count = max(1, int(count or 1))
     if editable_box is not None:
         x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
         target = image.crop((x1, y1, x2, y2))
-        cleaned = edit_patch_legacy(target, prompt=prompt, model=config["id"], cancel_check=cancel_check)
-        return feather_patch(image, cleaned, (x1, y1, x2, y2))
+        cleaned = edit_patch_legacy(
+            target,
+            prompt=prompt,
+            model=config["id"],
+            cancel_check=cancel_check,
+            count=count,
+        )
+        return [
+            feather_patch(image, cleaned_image, (x1, y1, x2, y2))
+            for cleaned_image in cleaned
+        ]
     source = image_file(image.convert("RGB"), "region.png")
     image_bytes = source.getvalue()
     source.close()
-    content = [{"type":"image_url", "image_url":{"url": encode_data_url(image_bytes, "png")}}]
+    content = [
+        {"type": "image_url", "image_url": {"url": encode_data_url(image_bytes, "png")}}
+    ]
     for reference in reference_images or []:
         reference_stream = image_file(reference.convert("RGB"), "reference.png")
         try:
-            content.append({"type":"image_url", "image_url":{"url": encode_data_url(reference_stream.getvalue(), "png")}})
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": encode_data_url(reference_stream.getvalue(), "png")
+                    },
+                }
+            )
         finally:
             reference_stream.close()
     request_prompt = prompt
@@ -511,33 +729,69 @@ def edit_patch_legacy(image, editable_box=None, prompt=PATCH_PROMPT, model=None,
     if "gemini" in config["model"].lower() and generation_options:
         aspect_ratio = generation_options.get("aspect_ratio") or "1:1"
         image_size = generation_options.get("image_size") or "1K"
+        expected_output_size = gemini_output_size(image_size, aspect_ratio)
         extra_body = {
             "size": aspect_ratio,
             "imageSize": image_size,
         }
         request_prompt = f"{prompt}\n\nGenerate the edited image at {image_size} resolution with a {aspect_ratio} aspect ratio."
     else:
-        extra_body = {"size": f"{output_size[0]}x{output_size[1]}" if output_size else f"{image.width}x{image.height}"}
-    content.append({"type":"text", "text":request_prompt})
-    response = client.chat.completions.create(
-        model=config["model"],
-        extra_body=extra_body,
-        messages=[
-            {
-                "role": "user",
-                "content": content,
-            }
-        ],
-    )
-    payload = response.model_dump() if hasattr(response, "model_dump") else response
-    result = extract_data_image(payload)
-    if result is None:
-        raise ValueError("legacy endpoint response did not contain an image")
-    if "gemini" in config["model"].lower() and generation_options and output_size and result.size != output_size:
-        raise OutputSizeMismatch(result, output_size, result.size, config["baseurl"])
-    if output_size is not None or generation_options is not None:
-        return result
-    return result.resize(image.size, Image.Resampling.LANCZOS)
+        expected_output_size = output_size
+        extra_body = {
+            "size": f"{output_size[0]}x{output_size[1]}"
+            if output_size
+            else f"{image.width}x{image.height}"
+        }
+    content.append({"type": "text", "text": request_prompt})
+    messages = [
+        {
+            "role": "user",
+            "content": content,
+        }
+    ]
+
+    def request_images(request_count):
+        _check_cancelled(cancel_check)
+        response = client.chat.completions.create(
+            model=config["model"],
+            extra_body=extra_body,
+            messages=messages,
+            n=request_count,
+        )
+        payload = response.model_dump() if hasattr(response, "model_dump") else response
+        return extract_data_images(payload)
+
+    results = []
+    if count > 1:
+        try:
+            results.extend(request_images(count))
+        except Exception:
+            results = []
+    while len(results) < count:
+        before = len(results)
+        results.extend(request_images(1))
+        if len(results) == before:
+            raise ValueError("legacy endpoint response did not contain an image")
+    results = results[:count]
+    if "gemini" in config["model"].lower() and generation_options:
+        mismatch = next(
+            (result for result in results if result.size != expected_output_size), None
+        )
+        if mismatch is not None:
+            raise OutputSizeMismatch(
+                mismatch,
+                expected_output_size,
+                mismatch.size,
+                config["baseurl"],
+                images=results,
+            )
+    normalized_results = []
+    for result in results:
+        if output_size is not None or generation_options is not None:
+            normalized_results.append(result)
+        else:
+            normalized_results.append(result.resize(image.size, Image.Resampling.LANCZOS))
+    return normalized_results
 
 
 def edit_patch(
@@ -550,19 +804,43 @@ def edit_patch(
     output_size=None,
     reference_images=None,
     generation_options=None,
+    count=1,
 ):
     _check_cancelled(cancel_check)
     config = get_model_config(model)
+    count = max(1, int(count or 1))
     if "modelscope.cn" in config["baseurl"].lower():
         if editable_box is not None:
             x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
             target = image.crop((x1, y1, x2, y2))
-            generated = _modelscope_image_edit(target, prompt, config, cancel_check, reference_images=reference_images)
-            return feather_patch(image, generated, (x1, y1, x2, y2))
-        generated = _modelscope_image_edit(image, prompt, config, cancel_check, output_size, reference_images)
-        if output_size is not None:
-            return generated
-        return generated.resize(image.size, Image.Resampling.LANCZOS)
+            generated_list = _modelscope_image_edit(
+                target,
+                prompt,
+                config,
+                cancel_check,
+                reference_images=reference_images,
+                count=count,
+            )
+            return [
+                feather_patch(image, generated, (x1, y1, x2, y2))
+                for generated in generated_list
+            ]
+        generated_list = _modelscope_image_edit(
+            image,
+            prompt,
+            config,
+            cancel_check,
+            output_size,
+            reference_images,
+            count=count,
+        )
+        results = []
+        for generated in generated_list:
+            if output_size is not None:
+                results.append(generated)
+            else:
+                results.append(generated.resize(image.size, Image.Resampling.LANCZOS))
+        return results
     if config["model"].lower().startswith("gpt-image"):
         return edit_patch_gpt(
             image,
@@ -573,8 +851,19 @@ def edit_patch(
             editable_mask,
             output_size,
             reference_images,
+            count,
         )
-    return edit_patch_legacy(image, editable_box, prompt, config["id"], cancel_check, output_size, reference_images, generation_options)
+    return edit_patch_legacy(
+        image,
+        editable_box,
+        prompt,
+        config["id"],
+        cancel_check,
+        output_size,
+        reference_images,
+        generation_options,
+        count,
+    )
 
 
 def gradient_image(gray):
@@ -630,7 +919,9 @@ def match_patch_boundary(patch, target, selection_mask=None):
         ring[:, :thickness] = True
         ring[:, -thickness:] = True
     else:
-        selected = np.asarray(decode_selection_mask(selection_mask, (width, height))) > 8
+        selected = (
+            np.asarray(decode_selection_mask(selection_mask, (width, height))) > 8
+        )
         kernel = np.ones((3, 3), dtype=np.uint8)
         eroded = cv2.erode(selected.astype(np.uint8), kernel, iterations=thickness)
         ring = selected & ~eroded.astype(bool)
@@ -654,6 +945,8 @@ def match_patch_boundary(patch, target, selection_mask=None):
             patch_array[:, :, channel] - float(np.median(source))
         ) * gain + float(np.median(destination))
     return np.clip(matched, 0, 255).astype(np.uint8)
+
+
 def multiband_blend(base, candidate, alpha, levels=PYRAMID_LEVELS):
     base_pyramid = [base.astype(np.float32)]
     candidate_pyramid = [candidate.astype(np.float32)]
@@ -668,8 +961,7 @@ def multiband_blend(base, candidate, alpha, levels=PYRAMID_LEVELS):
     for level in range(levels):
         size = (base_pyramid[level].shape[1], base_pyramid[level].shape[0])
         base_laplacian.append(
-            base_pyramid[level]
-            - cv2.pyrUp(base_pyramid[level + 1], dstsize=size)
+            base_pyramid[level] - cv2.pyrUp(base_pyramid[level + 1], dstsize=size)
         )
         candidate_laplacian.append(
             candidate_pyramid[level]
@@ -699,9 +991,7 @@ def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
     target_width = x2 - x1
     target_height = y2 - y1
     if patch.size != (target_width, target_height):
-        patch = patch.resize(
-            (target_width, target_height), Image.Resampling.LANCZOS
-        )
+        patch = patch.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
     if selection_mask is None:
         patch_rgb = np.asarray(patch.convert("RGB"))
@@ -748,9 +1038,12 @@ def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
 
     base_array = np.asarray(base.convert("RGB")).copy()
     height, width = base_array.shape[:2]
-    selected_level = np.asarray(
-        decode_selection_mask(selection_mask, (width, height)), dtype=np.float32
-    ) / 255.0
+    selected_level = (
+        np.asarray(
+            decode_selection_mask(selection_mask, (width, height)), dtype=np.float32
+        )
+        / 255.0
+    )
     selected = selected_level > (8.0 / 255.0)
     if not np.any(selected):
         raise ValueError("涂抹选区为空")
@@ -760,7 +1053,9 @@ def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
         raise ValueError("涂抹选区不在修改区域内")
     patch_rgb = np.asarray(patch.convert("RGB"))
     target_patch = base_array[y1:y2, x1:x2]
-    patch_rgb = match_patch_boundary(patch_rgb, target_patch, target_selected.astype(np.uint8) * 255)
+    patch_rgb = match_patch_boundary(
+        patch_rgb, target_patch, target_selected.astype(np.uint8) * 255
+    )
 
     candidate = base_array.copy()
     candidate_target = candidate[y1:y2, x1:x2]
@@ -782,6 +1077,8 @@ def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
     ).astype(bool)
     result[~support] = base_array[~support]
     return Image.fromarray(result, "RGB")
+
+
 def correction_layer(original, corrected, threshold=0):
     """Return an RGBA layer that reproduces corrected over original."""
     original_array = np.asarray(original.convert("RGB"))
@@ -810,13 +1107,20 @@ def generate_correction_overlay(
     reference_images=None,
     generation_options=None,
     full_image_edit=False,
+    count=1,
 ):
-    """Generate a full image or transparent local overlay for the requested selection."""
+    """Generate one or more full images / transparent overlays.
+
+    Returns a list of ``(overlay, box)`` tuples, one per requested image.
+    """
     page = page_image.convert("RGB")
     x1, y1, x2, y2 = _clamp_box(target_box, page.width, page.height)
+    count = max(1, int(count or 1))
     if full_image_edit:
-        editable_mask = decode_selection_mask(selection_mask, page.size) if selection_mask else None
-        generated = edit_patch(
+        editable_mask = (
+            decode_selection_mask(selection_mask, page.size) if selection_mask else None
+        )
+        generated_list = edit_patch(
             page,
             editable_box=None,
             prompt=prompt,
@@ -826,10 +1130,20 @@ def generate_correction_overlay(
             output_size=output_size,
             reference_images=reference_images,
             generation_options=generation_options,
+            count=count,
         )
-        return generated.convert("RGBA"), (0, 0, generated.width, generated.height)
-    if selection_mask is None and x1 == 0 and y1 == 0 and x2 == page.width and y2 == page.height:
-        generated = edit_patch(
+        return [
+            (generated.convert("RGBA"), (0, 0, generated.width, generated.height))
+            for generated in generated_list
+        ]
+    if (
+        selection_mask is None
+        and x1 == 0
+        and y1 == 0
+        and x2 == page.width
+        and y2 == page.height
+    ):
+        generated_list = edit_patch(
             page,
             editable_box=None,
             prompt=prompt,
@@ -838,8 +1152,12 @@ def generate_correction_overlay(
             output_size=output_size,
             reference_images=reference_images,
             generation_options=generation_options,
+            count=count,
         )
-        return generated.convert("RGBA"), (0, 0, generated.width, generated.height)
+        return [
+            (generated.convert("RGBA"), (0, 0, generated.width, generated.height))
+            for generated in generated_list
+        ]
     margin = max(int(context_pixels), int(feather_pixels) * 4)
     overlay_box = (
         max(0, x1 - margin),
@@ -867,9 +1185,10 @@ def generate_correction_overlay(
         if cancel_check is not None:
             kwargs["cancel_check"] = cancel_check
         kwargs["reference_images"] = reference_images
-        generated_context = edit_patch(context, **kwargs)
+        kwargs["count"] = count
+        generated_context_list = edit_patch(context, **kwargs)
     else:
-        generated_context = edit_patch(
+        generated_context_list = edit_patch(
             context,
             editable_box=local_target,
             prompt=prompt,
@@ -877,16 +1196,22 @@ def generate_correction_overlay(
             cancel_check=cancel_check,
             editable_mask=context_mask,
             reference_images=reference_images,
+            count=count,
         )
-    generated_target = generated_context.crop(local_target)
-    corrected_context = feather_patch(
-        context,
-        generated_target,
-        local_target,
-        pixels=max(1, int(feather_pixels)),
-        selection_mask=context_mask,
-    )
-    return correction_layer(context, corrected_context), overlay_box
+    results = []
+    for generated_context in generated_context_list:
+        generated_target = generated_context.crop(local_target)
+        corrected_context = feather_patch(
+            context,
+            generated_target,
+            local_target,
+            pixels=max(1, int(feather_pixels)),
+            selection_mask=context_mask,
+        )
+        results.append((correction_layer(context, corrected_context), overlay_box))
+    return results
+
+
 def save_png(image, output_path, source_info):
     options = {}
     for key in ("icc_profile", "exif", "dpi"):
@@ -900,9 +1225,9 @@ def save_correction_layer(original, corrected, output_path):
     layer = correction_layer(original, corrected)
     layer.save(output_path, "PNG")
 
-    reconstructed = Image.alpha_composite(
-        original.convert("RGBA"), layer
-    ).convert("RGB")
+    reconstructed = Image.alpha_composite(original.convert("RGBA"), layer).convert(
+        "RGB"
+    )
     if not np.array_equal(
         np.asarray(reconstructed), np.asarray(corrected.convert("RGB"))
     ):
@@ -944,7 +1269,7 @@ def main():
             f"[{index}/{len(crop_paths)}] {os.path.basename(crop_path)}: "
             f"box={box}, confidence={score:.4f}, scale={scale:.2f}"
         )
-        clean_crop = edit_patch(crop)
+        clean_crop = edit_patch(crop)[0]
         result = feather_patch(result, clean_crop, box)
 
     stem = os.path.splitext(os.path.basename(base_path))[0]

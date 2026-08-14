@@ -33,7 +33,7 @@
         
         .sidebar-btn { height:32px; min-height:32px; box-sizing:border-box; background:#0e639c; color:white; border:none; padding:0 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; }
         .sidebar-btn.secondary { background: #333; border: 1px solid #555; color: #ccc; }
-        button:not(.reference-add):not(.reference-remove) { height:32px; min-height:32px; box-sizing:border-box; }
+        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn) { height:32px; min-height:32px; box-sizing:border-box; }
         .sidebar-btn:hover { filter: brightness(1.05); }
         .expert-field { width:100%; box-sizing:border-box; padding:8px; background:#1f1f1f; color:#eee; border:1px solid #555; border-radius:4px; font:inherit; }
         .expert-icon-btn { width:32px; min-width:32px; height:32px; padding:0; font-size:16px; line-height:1; }
@@ -43,20 +43,35 @@
         .reference-add { display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:96px; aspect-ratio:1; box-sizing:border-box; border:1px dashed #66707a; color:#9cdcfe; background:linear-gradient(145deg,#25282c,#1d1f22); cursor:pointer; font-size:28px; }
         .reference-add:hover { border-color:#4aa3df; color:#fff; background:#28333c; }
         .reference-remove { position:absolute; top:4px; right:4px; width:20px; height:20px; border:0; border-radius:50%; color:#fff; background:rgba(0,0,0,.7); cursor:pointer; line-height:18px; }
+        /* 聊天式修改描述编辑器 */
+        .chat-composer { border:1px solid #555; border-radius:6px; background:#1f1f1f; overflow:hidden; }
+        .composer-images { display:flex; flex-wrap:wrap; gap:7px; padding:8px; border-bottom:1px solid #3a3a3a; }
+        .composer-image-tile { position:relative; width:58px; height:58px; border:1px solid #4b4d52; border-radius:6px; overflow:hidden; background:#202124; }
+        .composer-image-tile img { width:100%; height:100%; object-fit:cover; display:block; }
+        .composer-image-num { position:absolute; left:2px; top:2px; width:16px; height:16px; display:grid; place-items:center; border-radius:50%; color:#fff; background:#0e639c; font-size:10px; font-weight:bold; z-index:2; }
+        .composer-image-remove { position:absolute; right:2px; top:2px; width:18px; height:18px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; color:#fff; background:rgba(0,0,0,.7); cursor:pointer; font-size:12px; line-height:1; z-index:2; }
+        .composer-textarea { width:100%; box-sizing:border-box; padding:10px; border:0; background:transparent; color:#eee; font:inherit; font-size:13px; resize:vertical; min-height:64px; outline:none; }
+        .composer-footer { display:flex; align-items:center; gap:8px; padding:5px 8px; border-top:1px solid #3a3a3a; }
+        .composer-add-btn { width:28px; height:28px; display:grid; place-items:center; padding:0; border:1px dashed #66707a; border-radius:6px; color:#9cdcfe; background:transparent; cursor:pointer; font-size:20px; line-height:1; }
+        .composer-add-btn:hover { border-color:#4aa3df; color:#fff; background:#28333c; }
+        .composer-images:empty { display:none; }
         .size-options { display:grid; grid-template-columns:52px 52px minmax(0,1fr); gap:6px; margin-top:10px; }
         .size-option.custom-size-option { grid-column:1 / -1; }
         .size-option { display:flex; align-items:center; justify-content:center; height:32px; min-height:32px; padding:0 5px; box-sizing:border-box; border:1px solid #555; border-radius:5px; background:#333; color:#ccc; cursor:pointer; font-size:11px; }
-        .size-option:has(input:checked) { border-color:#4aa3df; background:#173b54; color:#fff; }
+        .size-option:has(input:checked) { border-color:#4aa3df; }
         .size-option input { margin-right:4px; }
+        .size-option input[type="radio"] { accent-color:#2e9e4f; }
         .custom-size-inputs { display:flex; align-items:center; gap:4px; }
         .custom-size-inputs input { width:58px; padding:5px; border:0; border-radius:3px; background:#1e1e1e; color:#fff; text-align:center; }
         .aspect-ratio-select { width:100%; height:32px; min-height:32px; box-sizing:border-box; border:1px solid #555; border-radius:5px; padding:0 5px; color:#ddd; background:#333; font-size:11px; }
         .size-option.is-disabled { opacity:.38; pointer-events:none; }
-        #canvas-wrapper { position:relative; flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:#26282b; }
-        #canvas-stage { flex:1; min-width:0; min-height:0; background:#524f4f; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative; }
-        #generation-preview { flex:0 0 12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border-top:1px solid #111; background:linear-gradient(180deg,#202225,#17191b); box-shadow:0 -6px 18px rgba(0,0,0,.25); }
+        #canvas-wrapper { position:relative; flex:1; min-width:0; min-height:0; overflow:hidden; background:#26282b; }
+        #canvas-stage { position:absolute; inset:0; background:#524f4f; display:flex; justify-content:center; align-items:center; overflow:hidden; }
+        #generation-preview { position:absolute; left:332px; right:20px; bottom:20px; height:12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border:1px solid #3a3d41; border-radius:12px; background:linear-gradient(180deg,rgba(32,34,37,.94),rgba(23,25,27,.94)); box-shadow:0 10px 30px rgba(0,0,0,.35); backdrop-filter:blur(14px); z-index:20; }
         .preview-heading { width:68px; flex:0 0 68px; display:flex; flex-direction:column; justify-content:center; color:#d8dde3; font-size:12px; letter-spacing:.08em; }
         .preview-heading small { margin-top:5px; color:#737b84; letter-spacing:0; }
+        .preview-add-btn { flex:0 0 40px; width:40px; height:40px; align-self:center; display:grid; place-items:center; border:1px dashed #4f5760; border-radius:8px; background:rgba(255,255,255,.03); cursor:pointer; font-size:26px; line-height:1; color:#55b7f0; padding:0; }
+        .preview-add-btn:hover { border-color:#4aa3df; color:#fff; background:#28333c; }
         #generation-preview-items { flex:1; display:flex; gap:9px; align-items:center; overflow-x:auto; overflow-y:hidden; }
         .generation-preview-empty { color:#656b72; font-size:12px; }
         .generation-card { position:relative; flex:0 0 auto; height:calc(100% - 4px); aspect-ratio:1.35; overflow:hidden; border:1px solid #454b52; border-radius:7px; background:#111; box-shadow:0 4px 12px rgba(0,0,0,.28); cursor:pointer; }
@@ -67,9 +82,9 @@
         .generation-eye.is-hidden { color:#737b84; background:rgba(12,14,16,.9); }
         .generation-kind { position:absolute; left:5px; bottom:5px; padding:2px 5px; border-radius:3px; color:#dfe8ef; background:rgba(0,0,0,.72); font-size:10px; }
         #sidebar > .control-group, #sidebar > .hint-box, #sidebar > h3 { display:none !important; }
-        #sidebar { flex:0 0 340px; width:340px; min-width:340px; max-width:340px; padding:0 0 0 48px; position:relative; overflow:hidden; max-height:100vh; gap:0; }
+        #sidebar { flex:0 0 48px; width:48px; min-width:48px; max-width:48px; padding:0; position:relative; overflow:hidden; max-height:100vh; gap:0; }
         #imgedit-toolbar { position:absolute; inset:0 auto 0 0; width:48px; box-sizing:border-box; padding-top:18px; display:flex; flex-direction:column; align-items:center; border-right:1px solid #000; background:#303236; z-index:5; overflow:hidden; }
-        #expert-panel { position:absolute; inset:0 0 0 48px; width:auto !important; min-width:0; box-sizing:border-box; padding:16px; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; -ms-overflow-style:none; }
+        #expert-panel { position:fixed; top:20px; bottom:20px; left:68px; width:292px; box-sizing:border-box; padding:18px; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; -ms-overflow-style:none; border:1px solid rgba(255,255,255,.12); border-radius:12px; background:rgba(36,39,43,.93); box-shadow:0 16px 42px rgba(0,0,0,.45); backdrop-filter:blur(14px); z-index:30; }
         #expert-panel::-webkit-scrollbar { display:none; width:0; height:0; }
         #expert-panel::-webkit-scrollbar-track { display:none; }
         #expert-panel::-webkit-scrollbar-thumb { display:none; }
@@ -83,7 +98,7 @@
         .edit-scope-option { display:flex; align-items:center; justify-content:center; gap:4px; height:32px; min-height:32px; box-sizing:border-box; border:1px solid #555; border-radius:5px; background:#333; cursor:pointer; font-size:11px; }
         .edit-scope-option:has(input:checked) { border-color:#4aa3df; background:#173b54; color:#fff; }
         .reference-order-note { margin-top:7px; padding:7px 8px; border-left:2px solid #4aa3df; color:#8e98a3; background:#24282c; font-size:11px; line-height:1.5; }
-        #preview-selection-toolbar { position:absolute; left:50%; bottom:calc(12.5vh + 12px); transform:translateX(-50%); z-index:300; width:max-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid #50545a; border-radius:12px; background:rgba(37,39,42,.96); box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); }
+        #preview-selection-toolbar { position:absolute; left:50%; bottom:calc(12.5vh + 40px); transform:translateX(-50%); z-index:300; width:max-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid #50545a; border-radius:12px; background:rgba(37,39,42,.96); box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); }
         #preview-selection-toolbar[hidden] { display:none; }
         .annotation-colors { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; }
         .annotation-color { width:28px; min-width:28px; height:28px !important; min-height:28px !important; aspect-ratio:1; flex:0 0 28px; padding:0; border:3px solid transparent; border-radius:50%; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.12); }
@@ -165,7 +180,7 @@
         /* ---- 浅色主题（图片编辑） ---- */
         body[data-theme="light"] { background-color:#f2f3f5; color:#1f2733; }
         body[data-theme="light"] #sidebar { background:#f2f3f5; color:#333; border-right:1px solid #d4d8dd; }
-        body[data-theme="light"] #expert-panel { background:#f2f3f5; }
+        body[data-theme="light"] #expert-panel { background:rgba(242,244,240,.9); border-color:rgba(26,45,36,.22); box-shadow:0 16px 42px rgba(40,57,48,.12); }
         body[data-theme="light"] #expert-panel h3, body[data-theme="light"] #expert-panel h3 { color:#111827; border-bottom-color:#d4d8dd; }
         body[data-theme="light"] .control-group { background:#ffffff; border-color:#dfe3e8; }
         body[data-theme="light"] .control-label { color:#0d5e96; }
@@ -177,7 +192,7 @@
         body[data-theme="light"] .sidebar-btn.secondary { background:#e8eaee; border-color:#c3c8cf; color:#2a3138; }
         body[data-theme="light"] .sidebar-btn.secondary:hover { filter:none; background:#dde1e6; }
         body[data-theme="light"] .size-option { background:#ffffff; border-color:#ccd2d9; color:#3a4149; }
-        body[data-theme="light"] .size-option:has(input:checked) { background:#d6e9f7; border-color:#4aa3df; color:#0d3b5c; }
+        body[data-theme="light"] .size-option:has(input:checked) { border-color:#4aa3df; }
         body[data-theme="light"] .edit-scope-option { background:#ffffff; border-color:#ccd2d9; color:#3a4149; }
         body[data-theme="light"] .edit-scope-option:has(input:checked) { background:#d6e9f7; border-color:#4aa3df; color:#0d3b5c; }
         body[data-theme="light"] .reference-tile { border-color:#cfd5dc; background:#ffffff; }
@@ -186,7 +201,7 @@
         body[data-theme="light"] .reference-order-note { background:#eef4fa; color:#33445a; border-left-color:#4aa3df; }
         body[data-theme="light"] #canvas-wrapper { background:#e3e7eb; }
         body[data-theme="light"] #canvas-stage { background:#e8eaed; }
-        body[data-theme="light"] #generation-preview { background:linear-gradient(180deg,#f7f8fa,#eceff3); border-top-color:#d5d9df; box-shadow:0 -6px 18px rgba(50,60,70,.12); }
+        body[data-theme="light"] #generation-preview { border-color:rgba(25,44,35,.18); background:linear-gradient(180deg,rgba(247,248,250,.95),rgba(236,239,243,.95)); box-shadow:0 10px 30px rgba(40,57,48,.14); }
         body[data-theme="light"] .preview-heading { color:#39424c; }
         body[data-theme="light"] .preview-heading small { color:#8a939d; }
         body[data-theme="light"] .generation-preview-empty { color:#9aa2ac; }
@@ -217,7 +232,7 @@
         /* Keep image_edit on roomspace's light palette. */
         body[data-theme="light"] { background-color:#dfe4df; color:#203128; }
         body[data-theme="light"] #sidebar { background:#eef1ec; color:#203128; border-right-color:rgba(25,44,35,.22); box-shadow:2px 0 8px rgba(40,57,48,.1); }
-        body[data-theme="light"] #expert-panel { background:#eef1ec; }
+        body[data-theme="light"] #expert-panel { background:rgba(242,244,240,.9); border-color:rgba(26,45,36,.22); box-shadow:0 16px 42px rgba(40,57,48,.12); }
         body[data-theme="light"] #expert-panel h3 { color:#213129; border-bottom-color:rgba(28,47,38,.14); }
         body[data-theme="light"] .control-group { background:#f2f4f0; border-color:rgba(26,45,36,.18); }
         body[data-theme="light"] .control-label { color:#1f5a45; }
@@ -237,16 +252,25 @@
         body[data-theme="light"] .sidebar-btn.secondary:hover { filter:none; color:#1f5a45; border-color:#1f5a45; background:#f7f8f5; }
         body[data-theme="light"] .size-option,
         body[data-theme="light"] .edit-scope-option { background:#fff; border-color:rgba(25,44,35,.24); color:#203128; }
-        body[data-theme="light"] .size-option:has(input:checked),
+        body[data-theme="light"] .size-option:has(input:checked) { border-color:#1f5a45; }
         body[data-theme="light"] .edit-scope-option:has(input:checked) { background:#1f5a45; border-color:#1f5a45; color:#fff; }
         body[data-theme="light"] .reference-tile { border-color:rgba(25,44,35,.22); background:#f2f4f0; }
         body[data-theme="light"] .reference-add { border-color:#77857d; color:#1f5a45; background:#f7f8f5; }
         body[data-theme="light"] .reference-add:hover { border-color:#1f5a45; color:#1f5a45; background:rgba(31,90,69,.06); }
         body[data-theme="light"] .reference-order-note { background:rgba(31,90,69,.065); color:#526159; border-left-color:#1f5a45; }
+        body[data-theme="light"] .chat-composer { background:#fff; border-color:rgba(25,44,35,.24); }
+        body[data-theme="light"] .composer-images { border-bottom-color:rgba(25,44,35,.14); }
+        body[data-theme="light"] .composer-image-tile { border-color:rgba(25,44,35,.22); background:#f2f4f0; }
+        body[data-theme="light"] .composer-textarea { color:#203128; }
+        body[data-theme="light"] .composer-footer { border-top-color:rgba(25,44,35,.14); }
+        body[data-theme="light"] .composer-add-btn { border-color:#77857d; color:#1f5a45; }
+        body[data-theme="light"] .composer-add-btn:hover { border-color:#1f5a45; color:#1f5a45; background:rgba(31,90,69,.06); }
+        body[data-theme="light"] .preview-add-btn { color:#1f5a45; }
+        body[data-theme="light"] .preview-add-btn:hover { color:#0d3b5c; }
         body[data-theme="light"] #canvas-wrapper,
         body[data-theme="light"] #canvas-stage,
         body[data-theme="light"] .canvas-container { background:#dfe4df; }
-        body[data-theme="light"] #generation-preview { background:#eef1ec; border-top-color:rgba(25,44,35,.18); box-shadow:0 -6px 18px rgba(40,57,48,.1); }
+        body[data-theme="light"] #generation-preview { border-color:rgba(25,44,35,.18); background:linear-gradient(180deg,rgba(247,248,250,.95),rgba(236,239,243,.95)); box-shadow:0 10px 30px rgba(40,57,48,.14); }
         body[data-theme="light"] .preview-heading { color:#38483f; }
         body[data-theme="light"] .preview-heading small,
         body[data-theme="light"] .generation-preview-empty { color:#77827c; }
@@ -297,6 +321,12 @@
             </svg>
             <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75 9.75 9.75 0 0 1 8.25 6c0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25 9.75 9.75 0 0 0 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>
+            </svg>
+        </div>
+        <div class="imgedit-nav-item imgedit-settings-btn" data-view="settings" role="button" tabindex="0" onclick="toggleExpertSettings()" title="设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
+                <path fill-rule="evenodd" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0-1.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" clip-rule="evenodd"/>
             </svg>
         </div>
         <div class="imgedit-nav-item" data-view="help" role="button" tabindex="0" onclick="showHelp()" title="使用帮助">
@@ -416,15 +446,9 @@
 
     <!-- 保存按钮已移至顶部并排显示 -->
 
-    <section id="expert-panel" style="display:none; width:100%; box-sizing:border-box;">
-        <div style="margin-bottom:12px;">
-            <h3 style="margin:0 0 10px 0;">图片编辑</h3>
-            <div style="display:flex; gap:6px;">
-                <button class="sidebar-btn" style="flex:1;" onclick="openImageFile()" title="打开图片">打开图片</button>
-                <button class="sidebar-btn secondary" style="flex:1;" onclick="openSaveChoiceDialog()" title="选择要保存的图片内容">保存图片</button>
-            </div>
-        </div>
-        <div class="control-group">
+    <section id="expert-panel" style="display:none; box-sizing:border-box;">
+        <h3 style="margin:0 0 10px 0;">图片编辑</h3>
+        <div class="control-group" id="expert-model-settings" style="display:none;">
             <label class="control-label">LLM 模型</label>
             <div style="display:flex; gap:6px;">
                 <select id="expert-model" class="expert-field" style="min-width:0;"></select>
@@ -447,10 +471,14 @@
                 <label class="edit-scope-option"><input type="radio" name="expert-edit-scope" value="local" onchange="updateExpertEditScope()"> 局部修改</label>
             </div>
             <label class="control-label">修改描述</label>
-            <textarea id="expert-prompt" class="expert-field" rows="7" placeholder="描述要修改或生成的画面"></textarea>
-            <label class="control-label" style="margin-top:10px; margin-bottom:0;">参考图片</label>
-            <div id="expert-reference-grid" class="reference-grid"></div>
-            <div class="reference-order-note">提交顺序：当前主图为第 1 张，下面添加的参考图依次作为第 2、3、4…张。</div>
+            <div class="chat-composer">
+                <div id="expert-composer-images" class="composer-images"></div>
+                <textarea id="expert-prompt" class="composer-textarea" rows="4" placeholder="描述要修改或生成的画面"></textarea>
+                <div class="composer-footer">
+                    <button type="button" class="composer-add-btn" onclick="document.getElementById('expert-reference-input').click()" title="添加图片">+</button>
+                    <span class="hint-box" style="margin:0; flex:1;">点击 + 添加参考图片（主图为 1，参考图从 2 编号）；下方输入描述</span>
+                </div>
+            </div>
             <input id="expert-reference-input" type="file" accept="image/*" hidden onchange="handleReferenceImage(event)">
         </div>
         <div class="control-group" style="margin-top:10px;">
@@ -489,9 +517,9 @@
             </div>
             <div id="expert-size-hint" class="hint-box">整图生成时生效；1K / 2K 配合右侧宽高比</div>
             <div id="expert-size-warning" class="size-limit-warning" hidden></div>
-            <label style="display:flex; align-items:center; gap:6px; margin-top:9px; font-size:12px; cursor:pointer;">
-                <input id="expert-toggle-advanced-mask" type="checkbox" checked> 显示高级蒙版
-            </label>
+            <label class="control-label" style="margin-top:11px; margin-bottom:5px;">生成张数</label>
+            <input id="expert-generation-count" type="number" min="1" max="4" value="1" class="expert-field" style="height:32px;min-height:32px;padding:0 8px;" oninput="updateExpertGenerationCountHint()" title="同时生成几张图；GPT Image 2 用 n 参数一次返回，其他模型会自动多次提交">
+            <div id="expert-count-hint" class="hint-box">生成 1 张</div>
         </div>
         <button id="expert-submit" class="sidebar-btn" style="width:100%; margin-top:10px;" onclick="submitExpertEdit()">生成图片</button>
         <div id="expert-status" class="hint-box" style="min-height:18px;"></div>
@@ -551,7 +579,7 @@
         </div>
     </div>
     <div id="generation-preview">
-        <div class="preview-heading">生成预览</div>
+        <button class="preview-add-btn" onclick="openImageFile()" title="打开图片">+</button>
         <div id="generation-preview-items"><span class="generation-preview-empty">生成结果会依次出现在这里</span></div>
     </div>
 </div>
@@ -601,31 +629,27 @@
     let drawStartY = 0;           // 绘制起始Y
 
     function renderReferenceGrid() {
-        const grid = document.getElementById('expert-reference-grid');
-        if (!grid) return;
-        grid.innerHTML = '';
+        const container = document.getElementById('expert-composer-images');
+        if (!container) return;
+        container.innerHTML = '';
         expertReferenceImages.forEach((source, index) => {
             const tile = document.createElement('div');
-            tile.className = 'reference-tile';
+            tile.className = 'composer-image-tile';
+            const num = document.createElement('span');
+            num.className = 'composer-image-num';
+            num.innerText = index + 2;
             const image = document.createElement('img');
             image.src = source;
             image.alt = `参考图 ${index + 1}`;
             const remove = document.createElement('button');
-            remove.className = 'reference-remove';
+            remove.className = 'composer-image-remove';
             remove.type = 'button';
             remove.title = '移除参考图';
             remove.innerText = '×';
             remove.onclick = () => { expertReferenceImages.splice(index, 1); renderReferenceGrid(); };
-            tile.append(image, remove);
-            grid.appendChild(tile);
+            tile.append(num, image, remove);
+            container.appendChild(tile);
         });
-        const add = document.createElement('button');
-        add.className = 'reference-add';
-        add.type = 'button';
-        add.title = '添加参考图';
-        add.innerText = '+';
-        add.onclick = () => document.getElementById('expert-reference-input').click();
-        grid.appendChild(add);
     }
 
     renderReferenceGrid();
@@ -707,7 +731,30 @@
         return {...presetPixelSize(mode, selectedAspectRatio), imageSize:null, aspectRatio:null};
     }
 
+    function readExpertGenerationCount() {
+        const input = document.getElementById('expert-generation-count');
+        if (!input) return 1;
+        const value = parseInt(input.value, 10);
+        if (Number.isNaN(value)) return 1;
+        return Math.max(1, Math.min(4, value));
+    }
+
+    function updateExpertGenerationCountHint() {
+        const count = readExpertGenerationCount();
+        const hint = document.getElementById('expert-count-hint');
+        if (hint) hint.innerText = count > 1
+            ? `生成 ${count} 张；GPT Image 2 用 n 参数一次返回，其他模型自动多次提交`
+            : '生成 1 张';
+    }
+
     function updateExpertSizeWarning(model=document.getElementById('expert-model')?.value) {
+        const hint = document.getElementById('expert-size-hint');
+        if (hint && canvas) {
+            const options = getExpertGenerationOptions(model);
+            hint.innerText = isGeminiImageModel(model)
+                ? `Gemini 请求：${options.imageSize} · ${options.aspectRatio} · 目标 ${options.width}×${options.height}`
+                : `gpt 目标 ${options.width}×${options.height}`;
+        }
         const warning = document.getElementById('expert-size-warning');
         if (!warning || !canvas || !isGptImage2Model(model)) {
             if (warning) warning.hidden = true;
@@ -734,11 +781,8 @@
             const preset = document.querySelector('input[name="expert-output-size"][value="1k"]');
             if (preset) preset.checked = true;
         }
-        const hint = document.getElementById('expert-size-hint');
-        if (hint) hint.innerText = gemini
-            ? 'Gemini 使用 1K / 2K 与宽高比；自定义像素尺寸不可用'
-            : 'GPT 模型会自动对齐到最接近的 16 倍数尺寸；1K / 2K 配合右侧宽高比';
         updateExpertSizeWarning(model);
+        updateExpertGenerationCountHint();
     }
 
     function previewEntryObjects(entry) {
@@ -1079,6 +1123,7 @@
             ? `整张修改：蒙版画布固定为主图尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}；未绘制时全图可修改，生成输出按“生成尺寸”设置`
             : '局部修改：请框选或涂抹需要修改的区域';
         updateExpertSelectionControls();
+        updateExpertGenerationCountHint();
     }
 
     // 缩小控制点（角点）大小，减少对视线的干扰
@@ -1119,23 +1164,47 @@
         if (canvas) fitToScreen();
     });
 
+    function getCanvasOverlayInsets() {
+        const stage = document.getElementById('canvas-stage');
+        const stageRect = stage?.getBoundingClientRect();
+        if (!stageRect) return { left: 0, top: 0, right: 0, bottom: 0 };
+        let left = 0;
+        let top = 0;
+        let right = 0;
+        let bottom = 0;
+        const panel = document.getElementById('expert-panel');
+        if (panel && getComputedStyle(panel).display !== 'none' && getComputedStyle(panel).visibility !== 'hidden') {
+            const panelRect = panel.getBoundingClientRect();
+            left = Math.max(0, panelRect.right - stageRect.left);
+        }
+        const preview = document.getElementById('generation-preview');
+        if (preview && getComputedStyle(preview).display !== 'none') {
+            const previewRect = preview.getBoundingClientRect();
+            bottom = Math.max(0, stageRect.bottom - previewRect.top);
+        }
+        return { left, top, right, bottom };
+    }
+
     function fitToScreen() {
         if (!canvas || !canvas.originalWidth || !canvas.originalHeight) return;
 
         const wrapper = document.getElementById('canvas-stage');
         const padding = 20;
-        const workspaceWidth = Math.max(1, wrapper.clientWidth);
-        const workspaceHeight = Math.max(1, wrapper.clientHeight);
+        const insets = getCanvasOverlayInsets();
+        const totalWidth = Math.max(1, wrapper.clientWidth);
+        const totalHeight = Math.max(1, wrapper.clientHeight);
+        const visibleWidth = Math.max(1, totalWidth - insets.left - insets.right);
+        const visibleHeight = Math.max(1, totalHeight - insets.top - insets.bottom);
         const zoom = Math.max(0.1, Math.min(
-            Math.max(1, workspaceWidth - padding * 2) / canvas.originalWidth,
-            Math.max(1, workspaceHeight - padding * 2) / canvas.originalHeight
+            Math.max(1, visibleWidth - padding * 2) / canvas.originalWidth,
+            Math.max(1, visibleHeight - padding * 2) / canvas.originalHeight
         ));
-        const offsetX = (workspaceWidth - canvas.originalWidth * zoom) / 2;
-        const offsetY = (workspaceHeight - canvas.originalHeight * zoom) / 2;
+        const offsetX = insets.left + (visibleWidth - canvas.originalWidth * zoom) / 2;
+        const offsetY = insets.top + (visibleHeight - canvas.originalHeight * zoom) / 2;
 
         // 在调整时隐藏画布避免视觉闪烁
         try { canvas.lowerCanvasEl.style.visibility = 'hidden'; } catch(e) {}
-        canvas.setDimensions({ width: workspaceWidth, height: workspaceHeight });
+        canvas.setDimensions({ width: totalWidth, height: totalHeight });
         canvas.setViewportTransform([zoom, 0, 0, zoom, offsetX, offsetY]);
         canvas.renderAll();
         try { canvas.lowerCanvasEl.style.visibility = 'visible'; } catch(e) {}
@@ -2189,7 +2258,6 @@
     });
     function setAdvancedMaskVisibility(visible) {
         document.getElementById('toggle-advanced-mask').checked = visible;
-        document.getElementById('expert-toggle-advanced-mask').checked = visible;
         if (!canvas) return;
         const mode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
         canvas.getObjects().forEach(obj => {
@@ -2205,7 +2273,6 @@
         canvas.requestRenderAll(); canvas.renderAll();
     }
     document.getElementById('toggle-advanced-mask').addEventListener('change', (e) => setAdvancedMaskVisibility(e.target.checked));
-    document.getElementById('expert-toggle-advanced-mask').addEventListener('change', (e) => setAdvancedMaskVisibility(e.target.checked));
 
     // 3. 编辑模式切换
     document.querySelectorAll('input[name="mode"]').forEach(radio => {
@@ -2364,7 +2431,6 @@
         const sidebar = document.getElementById('sidebar');
         Array.from(sidebar.children).forEach(child => { if (child.id !== 'expert-panel') { child.dataset.expertDisplay = child.style.display; child.style.display = 'none'; } });
         document.getElementById('expert-panel').style.display = 'block';
-        document.getElementById('expert-toggle-advanced-mask').checked = document.getElementById('toggle-advanced-mask').checked;
         loadExpertModels();
     }
 
@@ -2643,50 +2709,67 @@
         setExpertStatus(`模型：${model} · 正在生成图片...`, '#dcdcaa'); canvas.requestRenderAll();
         const jobId = expertJobId;
         try {
-            const raw = await pywebview.api.expert_edit_image(bounds.x,bounds.y,bounds.w,bounds.h,prompt,model,jobId,selectionMask,sourceImage,outputOptions.width,outputOptions.height,expertReferenceImages,outputOptions.imageSize,outputOptions.aspectRatio,isFullImage);
+            const generationCount = readExpertGenerationCount();
+            const raw = await pywebview.api.expert_edit_image(bounds.x,bounds.y,bounds.w,bounds.h,prompt,model,jobId,selectionMask,sourceImage,outputOptions.width,outputOptions.height,expertReferenceImages,outputOptions.imageSize,outputOptions.aspectRatio,isFullImage,generationCount);
             if (!expertBusy || expertJobId !== jobId) return;
             let result = typeof raw === 'string' ? JSON.parse(raw) : raw;
             if (result?.error === 'size_mismatch') {
                 const choice = await requestSizeMismatchChoice(result);
                 if (choice === 'abandon') throw new Error('已放弃本次尺寸不一致的生成结果');
-                if (choice === 'resize') {
-                    const resizedRaw = await pywebview.api.resize_image_data(
-                        result.rawImageData || result.imageData,
-                        result.requested.width,
-                        result.requested.height,
-                        isFullImage ? null : sourceImage,
-                        isFullImage ? null : selectionMask
-                    );
-                    const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
-                    if (resized?.error) throw new Error(resized.error);
-                    result.imageData = resized.imageData;
-                    result.overlay = {x:0, y:0, w:resized.width, h:resized.height};
-                    result.maskProtected = resized.maskProtected;
-                    result.sizeDecision = 'resize';
-                } else {
-                    result.overlay = {x:0, y:0, w:result.actual.width, h:result.actual.height};
-                    result.maskProtected = Boolean(result.hasSelectionMask);
-                    result.sizeDecision = 'actual';
+                const mismatchResults = Array.isArray(result.results) && result.results.length ? result.results : [result];
+                for (const item of mismatchResults) {
+                    if (choice === 'resize') {
+                        const resizedRaw = await pywebview.api.resize_image_data(
+                            item.rawImageData || item.imageData,
+                            item.requested.width,
+                            item.requested.height,
+                            isFullImage ? null : sourceImage,
+                            isFullImage ? null : selectionMask
+                        );
+                        const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
+                        if (resized?.error) throw new Error(resized.error);
+                        item.imageData = resized.imageData;
+                        item.overlay = {x:0, y:0, w:resized.width, h:resized.height};
+                        item.maskProtected = resized.maskProtected;
+                        item.sizeDecision = 'resize';
+                    } else {
+                        item.overlay = {x:0, y:0, w:item.actual.width, h:item.actual.height};
+                        item.maskProtected = Boolean(item.hasSelectionMask);
+                        item.sizeDecision = 'actual';
+                    }
+                    delete item.error;
                 }
+                if (mismatchResults.length > 1) result.results = mismatchResults;
+                else delete result.results;
+                result.sizeDecision = choice === 'resize' ? 'resize' : 'actual';
+                result.maskProtected = mismatchResults.some(item => item.maskProtected);
                 delete result.error;
             }
             if (!result || result.error) throw new Error(result?.message || result?.error || '生成失败');
-            await new Promise((resolve, reject) => fabric.Image.fromURL(result.imageData, img => {
-                if (!img) { reject(new Error('返回图像加载失败')); return; }
-                finishExpertGuideGeneration(guides);
-                img.set({left:result.overlay.x,top:result.overlay.y,scaleX:result.overlay.w/img.width,scaleY:result.overlay.h/img.height,
-                    selectable:true,evented:true,hasControls:false,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
-                    data:{type:'advanced-mask',id:result.id,assetId:result.assetId,target:result.target,previewVisible:true,isFullImage:isFullImage}});
-                img.set('visible', document.getElementById('toggle-advanced-mask').checked);
-                canvas.add(img);
-                addGenerationPreview(result, img, isFullImage);
-                reorderLayers();
-                canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); resolve();
-            }));
+            const results = Array.isArray(result.results) && result.results.length ? result.results : [result];
+            let addedCount = 0;
+            for (const item of results) {
+                if (!expertBusy || expertJobId !== jobId) return;
+                if (!item || item.error) throw new Error(item?.message || item?.error || '生成失败');
+                await new Promise((resolve, reject) => fabric.Image.fromURL(item.imageData, img => {
+                    if (!img) { reject(new Error('返回图像加载失败')); return; }
+                    finishExpertGuideGeneration(guides);
+                    img.set({left:item.overlay.x,top:item.overlay.y,scaleX:item.overlay.w/img.width,scaleY:item.overlay.h/img.height,
+                        selectable:true,evented:true,hasControls:false,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
+                        data:{type:'advanced-mask',id:item.id,assetId:item.assetId,target:item.target,previewVisible:true,isFullImage:isFullImage}});
+                    img.set('visible', document.getElementById('toggle-advanced-mask').checked);
+                    canvas.add(img);
+                    addGenerationPreview(item, img, isFullImage, {label: results.length > 1 ? `${isFullImage ? '整图' : '局部'} ${addedCount + 1}/${results.length}` : undefined});
+                    reorderLayers();
+                    canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); addedCount += 1; resolve();
+                }));
+            }
             const sizeDecisionText = result.sizeDecision === 'resize' ? '（已强制缩放）' : result.sizeDecision === 'actual' ? '（采用返回尺寸）' : '';
             const maskProtectionText = result.maskProtected ? '，蒙版外已保护' : '';
             const submittedModelLabel = result.submittedModel ? `${result.submittedModel}（${result.submittedProvider || '未设置'}）` : model;
-            setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${sizeDecisionText}${maskProtectionText}，尺寸 ${result.overlay.w}×${result.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成`, '#4ec9b0');
+            const firstResult = results[0] || result;
+            const countText = addedCount > 1 ? `，已生成 ${addedCount} 张` : '';
+            setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${countText}${sizeDecisionText}${maskProtectionText}，尺寸 ${firstResult.overlay.w}×${firstResult.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成${countText}`, '#4ec9b0');
         } catch (error) {
             finishExpertGuideGeneration(guides);
             setExpertStatus(`模型：${model} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();
@@ -2989,6 +3072,14 @@
     function toggleTheme() {
         applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
     }
+    function toggleExpertSettings() {
+        const settings = document.getElementById('expert-model-settings');
+        if (!settings) return;
+        const show = settings.style.display !== 'block';
+        settings.style.display = show ? 'block' : 'none';
+        const button = document.querySelector('.imgedit-settings-btn');
+        if (button) button.classList.toggle('active', show);
+    }
     async function loadThemeFromBackend() {
         try {
             const raw = await pywebview.api.get_theme();
@@ -3133,6 +3224,7 @@
     window.focusImageAdjust = focusImageAdjust;
     window.focusRoomspace = focusRoomspace;
     window.toggleTheme = toggleTheme;
+    window.toggleExpertSettings = toggleExpertSettings;
     window.showHelp = showHelp;
     window.openImageFile = openImageFile;
     window.openSaveChoiceDialog = openSaveChoiceDialog;
