@@ -17,7 +17,15 @@
           <div id="modelPickerMenu" class="model-picker-menu" role="listbox" aria-label="选择空间" hidden></div>
           <select id="modelSelect" hidden aria-hidden="true" tabindex="-1"></select>
         </div>
-        <button class="mode-button" id="resetView" type="button">透视</button>
+        <div class="view-dropdown">
+          <button class="mode-button" id="resetView" type="button">透视</button>
+          <div id="perspectiveMenu" class="perspective-menu" role="menu" aria-label="透视方向" hidden>
+            <button type="button" data-azimuth="45">东南</button>
+            <button type="button" data-azimuth="135">东北</button>
+            <button type="button" data-azimuth="315">西南</button>
+            <button type="button" data-azimuth="225">西北</button>
+          </div>
+        </div>
         <button class="mode-button" id="topView" type="button">俯视</button>
         <button class="mode-button" id="cameraView" type="button">记录相机</button>
         <button class="mode-button mode-button-primary" id="newSpace" type="button">新增</button>

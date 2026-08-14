@@ -97,7 +97,7 @@ function makeDoor(side, offset, width, model) { const horizontal = side === 'nor
 function makeChair(item, parent) { const material = mats[item.material || 'cream'], [x,z] = item.position || [0,0]; const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = item.rotation || 0; box('seat', [0.58,0.14,0.58], [0,0.52,0], material, g, {edges:true}); box('back', [0.58,0.72,0.13], [0,0.83,0.27], material, g, {edges:true}); for(const lx of [-0.23,0.23]) for(const lz of [-0.23,0.23]) box('leg',[0.08,0.5,0.08],[lx,0.25,lz],mats.metal,g); parent.add(g); }
 function makeItem(item, parent) { const [x,z] = item.position || [0,0], size = item.size || [1,1], mat = mats[item.material || 'cream']; if(item.kind === 'chair') return makeChair(item,parent); if(item.kind === 'sofa'){ const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = item.rotation || 0; box('base',[size[0],0.36,size[1]],[0,0.28,0],mats.rustDark,g,{edges:true}); box('cushion',[size[0]-0.08,0.22,size[1]-0.22],[0,0.56,-0.07],mat,g,{edges:true}); box('back',[size[0],0.82,0.2],[0,0.76,size[1]/2-0.1],mat,g,{edges:true}); box('arm-left',[0.16,0.62,size[1]],[-size[0]/2+0.08,0.55,0],mats.rustDark,g,{edges:true}); box('arm-right',[0.16,0.62,size[1]],[size[0]/2-0.08,0.55,0],mats.rustDark,g,{edges:true}); parent.add(g); return; } if(item.kind === 'tv'){ box('tv-screen',[0.08,size[1],size[0]],[x,1.12,z],mat,parent,{edges:true}); return; } if(item.kind === 'rug'){ box('rug',[size[0],0.06,size[1]],[x,0.055,z],mat,parent,{castShadow:false}); return; } if(item.kind === 'bench'){ box('bench',[size[0],0.46,size[1]],[x,0.29,z],mat,parent,{edges:true}); return; } const h = item.height || 0.45; if(item.kind === 'counter' || item.kind === 'island'){ box(`${item.kind}-base`,[size[0],h,size[1]],[x,h/2,z],mat,parent,{edges:true}); box(`${item.kind}-top`,[size[0]+0.05,0.08,size[1]+0.05],[x,h+0.04,z],mat,parent,{edges:true}); return; } if(item.kind === 'sink'){ box('sink',[size[0],0.12,size[1]],[x,h,z],mat,parent,{edges:true}); return; } box(`${item.kind}-top`,[size[0],0.12,size[1]],[x,h,z],mat,parent,{edges:true}); const px=Math.max(0.16,size[0]/2-0.18), pz=Math.max(0.16,size[1]/2-0.18); for(const lx of [-px,px]) for(const lz of [-pz,pz]) box('leg',[0.09,h,0.09],[x+lx,h/2,z+lz],mats.metal,parent); }
 function clearScene() { const sharedMaterials=new Set([...Object.values(mats),ceilingMat,edgeMat]); [...architecture.children,...furniture.children].forEach(root=>root.traverse(object=>{ object.geometry?.dispose(); const materials=Array.isArray(object.material)?object.material:[object.material]; materials.filter(material=>material&&!sharedMaterials.has(material)).forEach(material=>material.dispose()); })); architecture.clear(); furniture.clear(); ceiling=undefined; Object.keys(walls).forEach(k => delete walls[k]); }
-function renderModel(model) { sun.castShadow=sunEnabled; clearScene(); box('floor', [model.width + 0.44,0.18,model.depth + 0.44], [0,-0.09,0], mats.floor, architecture, {edges:true}); box('finish',[model.width-0.12,0.025,model.depth-0.12],[0,0.015,0],mats.floorInset,architecture,{castShadow:false}); ceiling=box('ceiling',[model.width+0.44,0.16,model.depth+0.44],[0,model.height+0.08,0],ceilingMat,architecture,{edges:true}); ceiling.visible=Boolean(model.ceilingVisible); ['north','south','east','west'].forEach(side=>makeWall(side,model)); (model.windows||[]).forEach(w=>makeWindow(w.wall,w.offset,w.width,model,w.sillHeight ?? w.bottomWallHeight ?? 0.66,w.height ?? 2.18)); (model.doors||[]).forEach(d=>makeDoor(d.wall,d.offset,d.width,model)); (model.zones||[]).forEach(zone=>{ const [x,z]=zone.position||[0,0], g=new THREE.Group(); g.name=zone.id; g.position.set(x,0,z); furniture.add(g); zone.items.forEach(item=>makeItem(item,g)); }); activeCamera=camera; controls.object=camera; controls.enableRotate=true; controls.minDistance=0.2; controls.maxDistance=120; controls.target.set(0,0.7,0); camera.position.set(model.width*0.83,model.height*2.9,model.depth*1.8); controls.update(); updatePerspectiveOutlines(); document.querySelector('.hint').textContent='拖动旋转 · 滚轮缩放 · 中键平移'; updatePanel(model); invalidateShadows(); renderer.render(scene,activeCamera); }
+function renderModel(model) { sun.castShadow=sunEnabled; clearScene(); box('floor', [model.width + 0.44,0.18,model.depth + 0.44], [0,-0.09,0], mats.floor, architecture, {edges:true}); box('finish',[model.width-0.12,0.025,model.depth-0.12],[0,0.015,0],mats.floorInset,architecture,{castShadow:false}); const ceilingBaseColor=new THREE.Color(model.editor?.ceilingColor||'#e9e6dc'); const ceilingGray=Math.min(1,Math.max(0,Number(model.editor?.ceilingGray)||0)); if(ceilingGray>0){ const luminance=ceilingBaseColor.r*0.299+ceilingBaseColor.g*0.587+ceilingBaseColor.b*0.114; ceilingBaseColor.lerp(new THREE.Color(luminance,luminance,luminance),ceilingGray); } ceilingMat.color.copy(ceilingBaseColor); ceiling=box('ceiling',[model.width+0.44,0.16,model.depth+0.44],[0,model.height+0.08,0],ceilingMat,architecture,{edges:true}); ceiling.visible=Boolean(model.ceilingVisible); ['north','south','east','west'].forEach(side=>makeWall(side,model)); (model.windows||[]).forEach(w=>makeWindow(w.wall,w.offset,w.width,model,w.sillHeight ?? w.bottomWallHeight ?? 0.66,w.height ?? 2.18)); (model.doors||[]).forEach(d=>makeDoor(d.wall,d.offset,d.width,model)); (model.zones||[]).forEach(zone=>{ const [x,z]=zone.position||[0,0], g=new THREE.Group(); g.name=zone.id; g.position.set(x,0,z); furniture.add(g); zone.items.forEach(item=>makeItem(item,g)); }); activeCamera=camera; controls.object=camera; controls.enableRotate=true; controls.minDistance=0.2; controls.maxDistance=120; controls.target.set(0,0.7,0); camera.position.set(model.width*0.83,model.height*2.9,model.depth*1.8); controls.update(); updatePerspectiveOutlines(); document.querySelector('.hint').textContent='拖动旋转 · 滚轮缩放 · 中键平移'; updatePanel(model); invalidateShadows(); renderer.render(scene,activeCamera); }
 function updatePanel(model) {
   document.querySelector('#modelName').textContent = model.name;
   document.querySelector('#roomSize').textContent = `${model.width.toFixed(2)} × ${model.depth.toFixed(2)} m`;
@@ -156,18 +156,53 @@ function updateAmbientLight(){ const intensity=Number(ambientIntensityInput.valu
 function updatePerspectiveOutlines(){ const visible=activeCamera===topCamera||perspectiveOutlinesInput.checked; perspectiveOutlinesInput.nextElementSibling.textContent=perspectiveOutlinesInput.checked?'显示':'隐藏'; architecture.traverse(object=>{ if(object.userData.perspectiveOutline)object.visible=visible&&(!object.userData.ceilingSeam||Boolean(ceiling?.visible)); }); furniture.traverse(object=>{ if(object.userData.perspectiveOutline)object.visible=visible; }); planEditor?.refreshOutlines?.(); renderer.render(scene,activeCamera); }
 function updateSunPosition(){ const x=Number(sunXInput.value), z=Number(sunZInput.value), elevation=Number(sunElevationInput.value), length=Math.hypot(x,z)||1, distance=18, radians=THREE.MathUtils.degToRad(elevation), horizontal=distance*Math.cos(radians); sun.position.set(x/length*horizontal,distance*Math.sin(radians),z/length*horizontal); sun.target.position.set(0,0,0); sun.target.updateMatrixWorld(); document.querySelector('#sunXValue').textContent=String(x); document.querySelector('#sunZValue').textContent=String(z); document.querySelector('#sunElevationValue').textContent=`${elevation}°`; sun.visible=sunEnabled; sun.castShadow=sunEnabled&&activeCamera!==topCamera; invalidateShadows(); renderer.render(scene,activeCamera); }
 [sunXInput,sunZInput,sunElevationInput].forEach(input=>input.addEventListener('input',updateSunPosition)); sunIntensityInput.addEventListener('input',updateSunIntensity); sunToggleInput.addEventListener('change',()=>{ sunEnabled=sunToggleInput.checked; sunToggleInput.nextElementSibling.textContent=sunEnabled?'开启':'关闭'; updateSunPosition(); }); ambientIntensityInput.addEventListener('input',updateAmbientLight); perspectiveOutlinesInput.addEventListener('change',updatePerspectiveOutlines); updateSunIntensity(); updateAmbientLight(); updateSunPosition();
-document.querySelector('#resetView').addEventListener('click', () => {
+const PERSPECTIVE_AZIMUTHS = { 45: '东南', 135: '东北', 315: '西南', 225: '西北' };
+function setCameraAzimuth(azimuthDeg) {
+  const distance = Math.max(activeModel.width, activeModel.depth) + 6.5;
+  const height = activeModel.height;
+  const radians = THREE.MathUtils.degToRad(azimuthDeg);
+  const targetY = Math.max(height * 0.42, 1.2);
+  camera.position.set(Math.sin(radians) * distance, targetY + height * 0.75, Math.cos(radians) * distance);
+  controls.object = camera;
+  controls.enableRotate = true;
+  controls.minDistance = 0.2;
+  controls.maxDistance = 120;
+  controls.target.set(0, targetY, 0);
+  camera.lookAt(controls.target);
+  controls.update();
+  activeCamera = camera;
+  updatePerspectiveOutlines();
+  renderer.render(scene, activeCamera);
+}
+function enterPerspectiveView(azimuthDeg = 45) {
   if (!activeModel) return;
   if (!outputPanel.hidden) setOutputMode(false);
   activeModel.ceilingVisible = false;
   if (activeModel.editor) activeModel.editor.ceilingVisible = false;
   document.querySelector('#ceilingToggle').setAttribute('aria-pressed', 'false');
   renderModel(activeModel);
+  setCameraAzimuth(azimuthDeg);
   if (planEditor.enabled) {
     planEditor.setCeilingVisibility(false);
     planEditor.setPerspectiveView();
   } else planEditor.refresh();
+  document.querySelector('.hint').textContent = `${PERSPECTIVE_AZIMUTHS[azimuthDeg] || '东南'}视角 · 拖动旋转 · 滚轮缩放 · 中键平移`;
+}
+const perspectiveMenu = document.querySelector('#perspectiveMenu');
+const perspectiveDropdown = document.querySelector('.view-dropdown');
+let perspectiveMenuTimer;
+function showPerspectiveMenu() { clearTimeout(perspectiveMenuTimer); perspectiveMenu.hidden = false; }
+function hidePerspectiveMenu() { perspectiveMenuTimer = setTimeout(() => { perspectiveMenu.hidden = true; }, 180); }
+document.querySelector('#resetView').addEventListener('mouseenter', showPerspectiveMenu);
+perspectiveMenu.addEventListener('mouseenter', showPerspectiveMenu);
+perspectiveDropdown.addEventListener('mouseleave', hidePerspectiveMenu);
+perspectiveMenu.querySelectorAll('button').forEach(button => {
+  button.addEventListener('click', () => {
+    perspectiveMenu.hidden = true;
+    enterPerspectiveView(Number(button.dataset.azimuth));
+  });
 });
+document.querySelector('#resetView').addEventListener('click', () => enterPerspectiveView(45));
 document.querySelector('#topView').addEventListener('click', () => { if (activeModel) { if(!outputPanel.hidden)setOutputMode(false); if(planEditor.enabled)planEditor.setTopView(); else showTopView(); } });
 document.querySelector('#cameraView').addEventListener('click', () => { if(activeModel) recordCameraPreset(); });
 const focalInput=document.querySelector('#focalLength'), focalValue=document.querySelector('#focalValue');

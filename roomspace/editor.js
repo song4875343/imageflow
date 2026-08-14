@@ -2,6 +2,7 @@
 
 const TYPES = {
   background: { label: '底图', method: 'asset' },
+  ceiling: { label: '天花', method: 'asset' },
   floor: { label: '地板', method: 'polygon', offset: 0.3, height: 0.1 },
   camera: { label: '相机', method: 'camera', focalLength: 35, cameraHeight: 1.65 },
   door: { label: '门', method: 'direction', length: 0.9, width: 0.16, height: 2.1, openAngle: 0 },
@@ -143,6 +144,8 @@ function deriveItems(model) {
 function ensureEditorData(model) {
   if (!model.editor) model.editor = {};
   model.editor.ceilingVisible ??= false;
+  model.editor.ceilingColor ??= '#e9e6dc';
+  model.editor.ceilingGray ??= 0;
   const version = Number(model.editor.version) || 0;
   if (version < 2 || !Array.isArray(model.editor.items)) {
     model.editor.items = deriveItems(model);
@@ -246,8 +249,17 @@ export function createPlanEditor(options) {
   const cameraView = options.cameraView || (() => {});
   const requestSave = options.requestSave || (() => {});
   const getPerspectiveOutlines = options.getPerspectiveOutlines || (() => true);
+  function ceilingColorValue() {
+    const color = new THREE.Color(currentData().ceilingColor || '#e9e6dc');
+    const gray = Math.min(1, Math.max(0, Number(currentData().ceilingGray) || 0));
+    if (gray > 0) {
+      const luminance = color.r * 0.299 + color.g * 0.587 + color.b * 0.114;
+      color.lerp(new THREE.Color(luminance, luminance, luminance), gray);
+    }
+    return color;
+  }
   function ceilingMaterial() {
-    const material = new THREE.MeshStandardMaterial({ color: 0xe9e6dc, roughness: 0.8, side: THREE.DoubleSide });
+    const material = new THREE.MeshStandardMaterial({ color: ceilingColorValue(), roughness: 0.8, side: THREE.DoubleSide });
     material.customProgramCacheKey = () => 'ceiling-ambient-0.10';
     material.onBeforeCompile = shader => {
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -1266,9 +1278,10 @@ export function createPlanEditor(options) {
     });
     if (data.ceilingVisible) {
       const floors = data.items.filter(item => item.kind === 'floor');
-      if (floors.length) floors.forEach(floor => reconcileObject(`ceiling:${floor.id}`, JSON.stringify(floor) + `:${model.height}`, () => buildCeilingForFloor(floor, model), desiredKeys));
+      const ceilingSignature = `:${data.ceilingColor || '#e9e6dc'}:${Number(data.ceilingGray) || 0}`;
+      if (floors.length) floors.forEach(floor => reconcileObject(`ceiling:${floor.id}`, JSON.stringify(floor) + `:${model.height}${ceilingSignature}`, () => buildCeilingForFloor(floor, model), desiredKeys));
       else {
-        reconcileObject('ceiling-default', `${model.width}:${model.depth}:${model.height}`, () => {
+        reconcileObject('ceiling-default', `${model.width}:${model.depth}:${model.height}${ceilingSignature}`, () => {
           const ceiling = new THREE.Mesh(sharedGeometry('box', () => new THREE.BoxGeometry(1, 1, 1)), ceilingMaterial());
           ceiling.scale.set(model.width + 0.44, 0.12, model.depth + 0.44);
           ceiling.position.y = model.height + 0.06;
@@ -1552,6 +1565,56 @@ export function createPlanEditor(options) {
       properties.appendChild(remove);
       return;
     }
+    if (selectedId === 'ceiling') {
+      modeLabel.textContent = '天花 · 编辑';
+      modeHelp.textContent = '调整天花颜色与灰度，参数修改即时生效';
+      const colorWrap = document.createElement('label');
+      colorWrap.className = 'editor-color-opacity';
+      const colorName = document.createElement('span'); colorName.textContent = '颜色';
+      const colorInput = document.createElement('input'); colorInput.type = 'color';
+      colorInput.value = /^#[0-9a-f]{6}$/i.test(data.ceilingColor || '') ? data.ceilingColor : '#e9e6dc';
+      let colorRecorded = false;
+      colorInput.addEventListener('focus', () => { colorRecorded = false; });
+      colorInput.addEventListener('input', () => {
+        if (!colorRecorded) { colorRecorded = true; pushUndo(); }
+        data.ceilingColor = colorInput.value;
+        renderAll();
+      });
+      colorWrap.append(colorName, colorInput);
+      properties.appendChild(colorWrap);
+      const grayWrap = document.createElement('label');
+      grayWrap.className = 'editor-gray-slider';
+      const grayName = document.createElement('span'); grayName.textContent = '灰度';
+      const grayInput = document.createElement('input'); grayInput.type = 'range';
+      grayInput.min = '0'; grayInput.max = '100'; grayInput.step = '1';
+      grayInput.value = String(Math.round((Number(data.ceilingGray) || 0) * 100));
+      const grayOutput = document.createElement('output'); grayOutput.textContent = `${grayInput.value}%`;
+      let grayRecorded = false;
+      grayInput.addEventListener('focus', () => { grayRecorded = false; });
+      grayInput.addEventListener('input', () => {
+        if (!grayRecorded) { grayRecorded = true; pushUndo(); }
+        data.ceilingGray = Number(grayInput.value) / 100;
+        grayOutput.textContent = `${grayInput.value}%`;
+        renderAll();
+      });
+      grayWrap.append(grayName, grayInput, grayOutput);
+      properties.appendChild(grayWrap);
+      const visibleRow = document.createElement('div');
+      visibleRow.className = 'editor-transform';
+      const visibleButton = document.createElement('button');
+      visibleButton.type = 'button';
+      visibleButton.textContent = data.ceilingVisible ? '隐藏天花' : '显示天花';
+      visibleButton.addEventListener('click', () => {
+        pushUndo();
+        data.ceilingVisible = !data.ceilingVisible;
+        visibleButton.textContent = data.ceilingVisible ? '隐藏天花' : '显示天花';
+        if (!enabled) syncPanel();
+        renderAll();
+      });
+      visibleRow.appendChild(visibleButton);
+      properties.appendChild(visibleRow);
+      return;
+    }
     const selection = selectedItems();
     if (selection.length > 1) {
       const sameKind = selection.every(item => item.kind === selection[0].kind);
@@ -1803,17 +1866,18 @@ export function createPlanEditor(options) {
 
   function updateCategoryButtons() {
     categories.querySelectorAll('button').forEach(button => {
-      const active = button.dataset.kind === activeKind;
-      const candidates = currentData().items.filter(item => item.kind === button.dataset.kind);
+      const kind = button.dataset.kind;
+      const active = kind === activeKind || (kind === 'ceiling' && selectedId === 'ceiling');
+      const candidates = currentData().items.filter(item => item.kind === kind);
       const categorySelected = candidates.length > 0 && candidates.every(item => selectedIds.has(item.id));
       const selectedUniqueItem = selectedId === 'background'
-        ? button.dataset.kind === 'background'
-        : currentItem()?.kind === 'floor' && button.dataset.kind === 'floor';
-      const uniqueItem = button.dataset.kind === 'background'
+        ? kind === 'background'
+        : currentItem()?.kind === 'floor' && kind === 'floor';
+      const uniqueItem = kind === 'background'
         ? currentData().background
-        : button.dataset.kind === 'floor' ? currentFloor() : null;
-      button.textContent = uniqueItem ? `选择${TYPES[button.dataset.kind].label}` : TYPES[button.dataset.kind].label;
-      button.setAttribute('aria-pressed', String((active && (mode === 'create' || selectedUniqueItem)) || categorySelected));
+        : kind === 'floor' ? currentFloor() : null;
+      button.textContent = uniqueItem ? `选择${TYPES[kind].label}` : TYPES[kind].label;
+      button.setAttribute('aria-pressed', String(kind === 'ceiling' ? selectedId === 'ceiling' : (active && (mode === 'create' || selectedUniqueItem)) || categorySelected));
       button.dataset.mode = 'create';
     });
     importBlueprint.textContent = currentData().background ? '选择底图' : '导入底图';
@@ -1884,6 +1948,16 @@ export function createPlanEditor(options) {
         const background = currentData().background;
         if (background) selectItem('background');
         else blueprintInput.click();
+      } else if (kind === 'ceiling') {
+        activeKind = kind;
+        mode = 'select';
+        selectedIds = new Set();
+        selectedId = 'ceiling';
+        movingId = '';
+        updateCategoryButtons();
+        showProperties();
+        renderAll();
+        return;
       } else if (kind === 'floor' && currentFloor()) {
         activeKind = kind;
         selectItem(currentFloor().id);
