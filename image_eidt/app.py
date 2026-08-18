@@ -15,7 +15,7 @@ from image_edit import (
     update_image_model,
     delete_image_model,
     generate_correction_overlay,
-    composite_selection_result,
+    composite_aligned_selection_result,
     OutputSizeMismatch,
     image_model_capability,
     load_image_model_config,
@@ -114,13 +114,20 @@ class ImageEditorAPI:
                 source = Image.open(
                     io.BytesIO(base64.b64decode(source_encoded))
                 ).convert("RGB")
-                resized = composite_selection_result(source, resized, selection_mask)
+                resized, alignment = composite_aligned_selection_result(
+                    source, resized, selection_mask, target_size, return_info=True
+                )
+            else:
+                alignment = {"moved": False, "dx": 0, "dy": 0}
             return json.dumps(
                 {
                     "imageData": _data_url(resized),
                     "width": resized.width,
                     "height": resized.height,
                     "maskProtected": mask_protected,
+                    "alignmentMoved": bool(alignment.get("moved")),
+                    "alignmentDx": int(alignment.get("dx", 0)),
+                    "alignmentDy": int(alignment.get("dy", 0)),
                 },
                 ensure_ascii=False,
             )
@@ -264,7 +271,15 @@ class ImageEditorAPI:
                 count=max(1, int(count or 1)),
             )
             results = []
-            for overlay, box in overlays:
+            for (
+                overlay,
+                box,
+                blend_method,
+                blend_label,
+                source_index,
+                blend_comparison,
+                alignment,
+            ) in overlays:
                 ox1, oy1, ox2, oy2 = box
                 results.append(
                     {
@@ -278,6 +293,14 @@ class ImageEditorAPI:
                             "h": oy2 - oy1,
                         },
                         "imageData": _data_url(overlay),
+                        "blendMethod": blend_method,
+                        "blendLabel": blend_label,
+                        "sourceIndex": source_index,
+                        "sourceCount": max(1, int(count or 1)),
+                        "blendComparison": blend_comparison,
+                        "alignmentMoved": bool(alignment.get("moved")),
+                        "alignmentDx": int(alignment.get("dx", 0)),
+                        "alignmentDy": int(alignment.get("dy", 0)),
                         "submittedModelId": selected_model["id"],
                         "submittedModel": selected_model["model"],
                         "submittedProvider": selected_model["provider"],
@@ -287,16 +310,10 @@ class ImageEditorAPI:
                 return json.dumps(results[0])
             return json.dumps({"results": results}, ensure_ascii=False)
         except OutputSizeMismatch as exc:
-            protect_selection = bool(selection_mask) and not full_image_edit
-            has_selection_mask = protect_selection
+            has_selection_mask = bool(selection_mask)
             mismatch_results = []
             for mismatch_image in exc.images:
                 raw_image = mismatch_image.convert("RGB")
-                resolved_image = (
-                    composite_selection_result(edit_source, raw_image, selection_mask)
-                    if protect_selection
-                    else raw_image
-                )
                 mismatch_results.append({
                     "error": "size_mismatch",
                     "message": str(exc),
@@ -318,7 +335,7 @@ class ImageEditorAPI:
                         "w": raw_image.width,
                         "h": raw_image.height,
                     },
-                    "imageData": _data_url(resolved_image),
+                    "imageData": _data_url(raw_image),
                     "rawImageData": _data_url(raw_image),
                     "hasSelectionMask": has_selection_mask,
                     "submittedModelId": selected_model["id"],

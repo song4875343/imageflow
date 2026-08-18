@@ -78,8 +78,11 @@
         .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
         .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
-        .generation-eye { position:absolute; top:5px; right:5px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:1px solid rgba(255,255,255,.25); border-radius:6px; color:#fff; background:rgba(12,14,16,.78); cursor:pointer; font-size:15px; }
-        .generation-eye.is-hidden { color:#737b84; background:rgba(12,14,16,.9); }
+        .generation-eye { position:absolute; top:-8px; right:2px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; color:#fff; background:transparent; cursor:pointer; font-size:15px; }
+        .generation-eye:hover, .generation-compare-toggle:hover { background:rgba(12,14,16,.3); }
+        .generation-eye.is-hidden { color:#737b84; }
+        .generation-compare-toggle { position:absolute; right:2px; bottom:-8px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; color:#fff; background:transparent; cursor:pointer; font-size:18px; line-height:1; }
+        .generation-card.comparison-hidden { display:none; }
         .generation-kind { position:absolute; left:5px; bottom:5px; padding:2px 5px; border-radius:3px; color:#dfe8ef; background:rgba(0,0,0,.72); font-size:10px; }
         #sidebar > .control-group, #sidebar > .hint-box, #sidebar > h3 { display:none !important; }
         #sidebar { flex:0 0 48px; width:48px; min-width:48px; max-width:48px; padding:0; position:relative; overflow:hidden; max-height:100vh; gap:0; }
@@ -208,7 +211,9 @@
         body[data-theme="light"] .generation-card { border-color:#cfd5dc; background:#ffffff; box-shadow:0 4px 12px rgba(30,40,50,.14); }
         body[data-theme="light"] .generation-card img { background:#ffffff; }
         body[data-theme="light"] .generation-kind { color:#333; background:rgba(255,255,255,.92); }
-        body[data-theme="light"] .generation-eye { border-color:rgba(0,0,0,.18); color:#555; background:rgba(255,255,255,.88); }
+        body[data-theme="light"] .generation-eye { color:#555; }
+        body[data-theme="light"] .generation-compare-toggle { color:#38483f; }
+        body[data-theme="light"] .generation-eye:hover, body[data-theme="light"] .generation-compare-toggle:hover { background:rgba(25,44,35,.1); }
         body[data-theme="light"] .save-choice-overlay { background:rgba(50,54,60,.4); }
         body[data-theme="light"] .save-choice-panel { border-color:#d8dce1; background:#ffffff; color:#222831; box-shadow:0 18px 55px rgba(30,35,42,.28); }
         body[data-theme="light"] .save-choice-title { color:#111827; }
@@ -279,7 +284,7 @@
         body[data-theme="light"] .generation-card.is-main::before { background:#1f5a45; }
         body[data-theme="light"] .generation-card img { background:#dfe4df; }
         body[data-theme="light"] .generation-kind { color:#203128; background:rgba(242,244,240,.94); }
-        body[data-theme="light"] .generation-eye { border-color:rgba(25,44,35,.2); color:#38483f; background:rgba(242,244,240,.92); }
+        body[data-theme="light"] .generation-eye { border:0; color:#38483f; background:transparent; }
         body[data-theme="light"] .save-choice-overlay { background:rgba(20,29,24,.42); }
         body[data-theme="light"] .save-choice-panel { border-color:rgba(25,44,35,.24); background:#eef1ec; color:#203128; box-shadow:0 18px 55px rgba(20,31,25,.28); }
         body[data-theme="light"] .save-choice-title { color:#213129; }
@@ -619,6 +624,7 @@
     const advancedMaskJobs = new Map();
     const expertReferenceImages = [];
     const generationPreviewObjects = new Map();
+    const expandedBlendGroups = new Set();
     let selectedPreviewId = null;
     let annotationColor = '#ff5252';
     let annotationMode = null;
@@ -791,6 +797,7 @@
 
     function resetGenerationPreviews() {
         generationPreviewObjects.clear();
+        expandedBlendGroups.clear();
         selectedPreviewId = null;
         annotationMode = null;
         annotationMarkerNumber = 1;
@@ -808,9 +815,29 @@
             entry.button.classList.toggle('is-hidden', !visible);
             entry.button.innerText = visible ? '👁' : '◌';
             entry.button.title = visible ? '隐藏此图层' : '显示此图层';
+            entry.button.setAttribute('aria-label', entry.button.title);
+            if (entry.compareButton) {
+                const groupEntries = [...generationPreviewObjects.values()].filter(item => item.blendGroup === entry.blendGroup);
+                const expanded = expandedBlendGroups.has(entry.blendGroup);
+                entry.compareButton.innerText = expanded ? '−' : '+';
+                entry.compareButton.title = expanded ? '收起融合对比' : '展开融合对比';
+                entry.compareButton.setAttribute('aria-label', entry.compareButton.title);
+                groupEntries.forEach(item => {
+                    if (item.blendMethod !== 'confidence') item.card.classList.toggle('comparison-hidden', !expanded);
+                });
+            }
             entry.card.classList.toggle('is-main', Boolean(entry.isMain));
             entry.card.classList.toggle('is-selected', entry.previewId === selectedPreviewId);
         });
+    }
+
+    function toggleBlendComparison(blendGroup) {
+        if (!blendGroup) return;
+        const entries = [...generationPreviewObjects.values()].filter(entry => entry.blendGroup === blendGroup);
+        if (!entries.length) return;
+        if (expandedBlendGroups.has(blendGroup)) expandedBlendGroups.delete(blendGroup);
+        else expandedBlendGroups.add(blendGroup);
+        syncGenerationPreviewVisibility();
     }
 
     function toggleGenerationPreview(previewId) {
@@ -866,6 +893,7 @@
         });
         const card = document.createElement('div');
         card.className = 'generation-card';
+        if (options.blendGroup && result.blendMethod !== 'confidence') card.classList.add('comparison-hidden');
         card.onclick = () => selectGenerationPreview(previewId);
         const thumbnail = document.createElement('img');
         thumbnail.src = result.imageData;
@@ -874,13 +902,28 @@
         eye.className = 'generation-eye';
         eye.type = 'button';
         eye.innerText = '👁';
+        eye.setAttribute('aria-label', '隐藏此图层');
         eye.onclick = event => { event.stopPropagation(); toggleGenerationPreview(previewId); };
         const kind = document.createElement('span');
         kind.className = 'generation-kind';
         kind.innerText = options.label || (isFullImage ? `整图 ${result.overlay.w}×${result.overlay.h}` : '局部蒙版');
         card.append(thumbnail, eye, kind);
+        let compareButton = null;
+        if (options.blendGroup && result.blendMethod === 'confidence') {
+            compareButton = document.createElement('button');
+            compareButton.className = 'generation-compare-toggle';
+            compareButton.type = 'button';
+            compareButton.innerText = '+';
+            compareButton.title = '展开融合对比';
+            compareButton.setAttribute('aria-label', '展开融合对比');
+            compareButton.onclick = event => {
+                event.stopPropagation();
+                toggleBlendComparison(options.blendGroup);
+            };
+            card.append(compareButton);
+        }
         if (options.prepend) items.prepend(card); else items.appendChild(card);
-        const entry = {previewId, objects, button:eye, card, thumbnail, kind, isFullImage, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask)};
+        const entry = {previewId, objects, button:eye, compareButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask)};
         generationPreviewObjects.set(previewId, entry);
         syncGenerationPreviewVisibility();
         return entry;
@@ -889,23 +932,32 @@
     function deleteSelectedPreviewLayer() {
         const entry = generationPreviewObjects.get(selectedPreviewId);
         if (!entry) return;
-        if (entry.isMain) {
+        const entries = entry.blendGroup
+            ? [...generationPreviewObjects.values()].filter(item => item.blendGroup === entry.blendGroup)
+            : [entry];
+        if (entries.some(item => item.isMain)) {
             setExpertStatus('主图不能直接删除，请先把其他整图置为主图', '#dcdcaa');
             return;
         }
-        const objects = previewEntryObjects(entry);
-        objects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
-        if (entry.isSelectionMask) {
-            expertRectGuides = expertRectGuides.filter(object => !objects.includes(object));
-            expertBrushPaths = expertBrushPaths.filter(object => !objects.includes(object));
-            expertGeneratingGuides = expertGeneratingGuides.filter(object => !objects.includes(object));
-            if (objects.includes(expertGuide)) expertGuide = null;
+        const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
+        deletedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
+        if (entries.some(item => item.isSelectionMask)) {
+            expertRectGuides = expertRectGuides.filter(object => !deletedObjects.includes(object));
+            expertBrushPaths = expertBrushPaths.filter(object => !deletedObjects.includes(object));
+            expertGeneratingGuides = expertGeneratingGuides.filter(object => !deletedObjects.includes(object));
+            if (deletedObjects.includes(expertGuide)) expertGuide = null;
             stopExpertSelectionDrawing();
             updateExpertSelectionControls();
         }
-        entry.card.remove();
-        generationPreviewObjects.delete(entry.previewId);
-        if (entry.isAnnotation) { annotationMarkerNumber = 1; updateAnnotationMarkerButton(); }
+        entries.forEach(item => {
+            item.card.remove();
+            generationPreviewObjects.delete(item.previewId);
+        });
+        if (!generationPreviewObjects.size) {
+            document.getElementById('generation-preview-items').innerHTML = '<span class="generation-preview-empty">生成结果会依次出现在这里</span>';
+        }
+        if (entries.some(item => item.isAnnotation)) { annotationMarkerNumber = 1; updateAnnotationMarkerButton(); }
+        if (entry.blendGroup) expandedBlendGroups.delete(entry.blendGroup);
         selectedPreviewId = null;
         document.getElementById('preview-selection-toolbar').hidden = true;
         canvas.discardActiveObject();
@@ -2718,20 +2770,25 @@
                 if (choice === 'abandon') throw new Error('已放弃本次尺寸不一致的生成结果');
                 const mismatchResults = Array.isArray(result.results) && result.results.length ? result.results : [result];
                 for (const item of mismatchResults) {
-                    if (choice === 'resize') {
+                    const hasMaskForMismatch = Boolean(sourceImage && selectionMask);
+                    if (choice === 'resize' || (choice === 'actual' && hasMaskForMismatch)) {
+                        const target = choice === 'resize' ? item.requested : item.actual;
                         const resizedRaw = await pywebview.api.resize_image_data(
                             item.rawImageData || item.imageData,
-                            item.requested.width,
-                            item.requested.height,
-                            isFullImage ? null : sourceImage,
-                            isFullImage ? null : selectionMask
+                            target.width,
+                            target.height,
+                            hasMaskForMismatch ? sourceImage : null,
+                            hasMaskForMismatch ? selectionMask : null
                         );
                         const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
                         if (resized?.error) throw new Error(resized.error);
                         item.imageData = resized.imageData;
                         item.overlay = {x:0, y:0, w:resized.width, h:resized.height};
                         item.maskProtected = resized.maskProtected;
-                        item.sizeDecision = 'resize';
+                        item.alignmentMoved = Boolean(resized.alignmentMoved);
+                        item.alignmentDx = Number(resized.alignmentDx) || 0;
+                        item.alignmentDy = Number(resized.alignmentDy) || 0;
+                        item.sizeDecision = choice;
                     } else {
                         item.overlay = {x:0, y:0, w:item.actual.width, h:item.actual.height};
                         item.maskProtected = Boolean(item.hasSelectionMask);
@@ -2743,6 +2800,12 @@
                 else delete result.results;
                 result.sizeDecision = choice === 'resize' ? 'resize' : 'actual';
                 result.maskProtected = mismatchResults.some(item => item.maskProtected);
+                result.alignmentMoved = mismatchResults.some(item => item.alignmentMoved);
+                const movedMismatch = mismatchResults.find(item => item.alignmentMoved);
+                if (movedMismatch) {
+                    result.alignmentDx = movedMismatch.alignmentDx || 0;
+                    result.alignmentDy = movedMismatch.alignmentDy || 0;
+                }
                 delete result.error;
             }
             if (!result || result.error) throw new Error(result?.message || result?.error || '生成失败');
@@ -2756,10 +2819,17 @@
                     finishExpertGuideGeneration(guides);
                     img.set({left:item.overlay.x,top:item.overlay.y,scaleX:item.overlay.w/img.width,scaleY:item.overlay.h/img.height,
                         selectable:true,evented:true,hasControls:false,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
-                        data:{type:'advanced-mask',id:item.id,assetId:item.assetId,target:item.target,previewVisible:true,isFullImage:isFullImage}});
-                    img.set('visible', document.getElementById('toggle-advanced-mask').checked);
+                        data:{type:'advanced-mask',id:item.id,assetId:item.assetId,target:item.target,previewVisible:true,isFullImage:isFullImage,blendMethod:item.blendMethod,blendLabel:item.blendLabel}});
+                    const isBlendComparison = Boolean(item.blendComparison);
+                    const showByDefault = !isBlendComparison || item.blendMethod === 'confidence';
+                    img.set('visible', document.getElementById('toggle-advanced-mask').checked && showByDefault);
                     canvas.add(img);
-                    addGenerationPreview(item, img, isFullImage, {label: results.length > 1 ? `${isFullImage ? '整图' : '局部'} ${addedCount + 1}/${results.length}` : undefined});
+                    const sourceSuffix = Number(item.sourceCount) > 1 ? ` · 样本 ${item.sourceIndex}/${item.sourceCount}` : '';
+                    const previewLabel = item.blendLabel
+                        ? `${item.blendLabel}${sourceSuffix}`
+                        : (results.length > 1 ? `${isFullImage ? '整图' : '局部'} ${addedCount + 1}/${results.length}` : undefined);
+                    const blendGroup = isBlendComparison ? `${jobId}:blend:${item.sourceIndex || addedCount}` : null;
+                    addGenerationPreview(item, img, isFullImage, {label: previewLabel, blendGroup});
                     reorderLayers();
                     canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); addedCount += 1; resolve();
                 }));
@@ -2769,7 +2839,11 @@
             const submittedModelLabel = result.submittedModel ? `${result.submittedModel}（${result.submittedProvider || '未设置'}）` : model;
             const firstResult = results[0] || result;
             const countText = addedCount > 1 ? `，已生成 ${addedCount} 张` : '';
-            setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${countText}${sizeDecisionText}${maskProtectionText}，尺寸 ${firstResult.overlay.w}×${firstResult.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成${countText}`, '#4ec9b0');
+            const movedItem = results.find(item => item.alignmentMoved);
+            const alignmentText = movedItem
+                ? `，已对齐 ${movedItem.alignmentDx >= 0 ? '+' : ''}${movedItem.alignmentDx}px/${movedItem.alignmentDy >= 0 ? '+' : ''}${movedItem.alignmentDy}px`
+                : '';
+            setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${countText}${sizeDecisionText}${maskProtectionText}${alignmentText}，尺寸 ${firstResult.overlay.w}×${firstResult.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成${countText}${alignmentText}`, '#4ec9b0');
         } catch (error) {
             finishExpertGuideGeneration(guides);
             setExpertStatus(`模型：${model} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();

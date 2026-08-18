@@ -466,6 +466,104 @@ def decode_selection_mask(selection_mask, size=None):
     return mask
 
 
+def align_generated_to_source(
+    source, generated, selection_mask=None, max_shift=8, return_info=False
+):
+    """Align from an outside mask ring when a small shift clearly improves it."""
+    source_image = source.convert("RGB")
+    generated_image = generated.convert("RGB")
+    if generated_image.size != source_image.size:
+        generated_image = generated_image.resize(
+            source_image.size, Image.Resampling.LANCZOS
+        )
+    unchanged = {"moved": False, "dx": 0, "dy": 0, "improvement": 0.0}
+    if selection_mask is None:
+        return (generated_image, unchanged) if return_info else generated_image
+
+    width, height = source_image.size
+    mask = np.asarray(decode_selection_mask(selection_mask, (width, height)))
+    selected = (mask > 8).astype(np.uint8)
+    if not np.any(selected):
+        return (generated_image, unchanged) if return_info else generated_image
+
+    ring_width = max(4, min(12, int(round(min(width, height) * 0.008))))
+    kernel = np.ones((ring_width * 2 + 1, ring_width * 2 + 1), np.uint8)
+    ring = cv2.dilate(selected, kernel).astype(bool) & ~selected.astype(bool)
+    if int(np.count_nonzero(ring)) < 64:
+        return (generated_image, unchanged) if return_info else generated_image
+
+    source_array = np.asarray(source_image)
+    generated_array = np.asarray(generated_image)
+    source_gray = cv2.cvtColor(source_array, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    generated_gray = cv2.cvtColor(generated_array, cv2.COLOR_RGB2GRAY).astype(
+        np.float32
+    )
+    source_gray = cv2.GaussianBlur(source_gray, (0, 0), 0.8)
+    generated_gray = cv2.GaussianBlur(generated_gray, (0, 0), 0.8)
+    source_edge = gradient_image(source_gray)
+    generated_edge = gradient_image(generated_gray)
+    ys, xs = np.nonzero(ring)
+
+    def shift_score(dx, dy):
+        sample_x = xs + dx
+        sample_y = ys + dy
+        valid = (
+            (sample_x >= 0)
+            & (sample_x < width)
+            & (sample_y >= 0)
+            & (sample_y < height)
+        )
+        if int(np.count_nonzero(valid)) < 64:
+            return float("inf")
+        source_y, source_x = ys[valid], xs[valid]
+        target_y, target_x = sample_y[valid], sample_x[valid]
+        edge_error = np.median(
+            np.abs(source_edge[source_y, source_x] - generated_edge[target_y, target_x])
+        )
+        intensity_delta = (
+            generated_gray[target_y, target_x] - source_gray[source_y, source_x]
+        )
+        intensity_error = np.median(
+            np.abs(intensity_delta - np.median(intensity_delta))
+        )
+        return float(edge_error + intensity_error * 0.35)
+
+    baseline = shift_score(0, 0)
+    best_score, best_dx, best_dy = baseline, 0, 0
+    for dy in range(-int(max_shift), int(max_shift) + 1):
+        for dx in range(-int(max_shift), int(max_shift) + 1):
+            if dx == 0 and dy == 0:
+                continue
+            score = shift_score(dx, dy)
+            if score < best_score:
+                best_score, best_dx, best_dy = score, dx, dy
+
+    improvement = (
+        0.0
+        if not np.isfinite(baseline) or baseline <= 1e-6
+        else max(0.0, 1.0 - best_score / baseline)
+    )
+    if (best_dx == 0 and best_dy == 0) or improvement < 0.10:
+        return (generated_image, unchanged) if return_info else generated_image
+
+    warp = np.float32([[1, 0, -best_dx], [0, 1, -best_dy]])
+    aligned = cv2.warpAffine(
+        generated_array,
+        warp,
+        (width, height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REFLECT_101,
+    )
+    info = {
+        "moved": True,
+        "dx": int(-best_dx),
+        "dy": int(-best_dy),
+        "improvement": float(improvement),
+    }
+    result = Image.fromarray(aligned, "RGB")
+    return (result, info) if return_info else result
+
+
 def composite_selection_result(source, generated, selection_mask):
     if selection_mask is None:
         return generated
@@ -479,6 +577,36 @@ def composite_selection_result(source, generated, selection_mask):
     return Image.composite(
         generated.convert("RGB"), protected, Image.fromarray(mask, "L")
     )
+
+
+def composite_aligned_selection_result(
+    source,
+    generated,
+    selection_mask,
+    target_size=None,
+    pixels=FEATHER_PIXELS,
+    return_info=False,
+):
+    """Resize, register, and confidence-composite a generated masked result."""
+    source_image = source.convert("RGB")
+    generated_image = generated.convert("RGB")
+    target_size = tuple(target_size or generated_image.size)
+    if source_image.size != target_size:
+        source_image = source_image.resize(target_size, Image.Resampling.LANCZOS)
+    if generated_image.size != target_size:
+        generated_image = generated_image.resize(target_size, Image.Resampling.LANCZOS)
+    mask = decode_selection_mask(selection_mask, target_size)
+    aligned, alignment = align_generated_to_source(
+        source_image, generated_image, mask, return_info=True
+    )
+    result = blend_confidence(
+        source_image,
+        aligned,
+        (0, 0, target_size[0], target_size[1]),
+        pixels=max(1, int(pixels)),
+        selection_mask=mask,
+    )
+    return (result, alignment) if return_info else result
 
 
 def gpt_edit_mask(image, editable_box=None, editable_mask=None):
@@ -1079,6 +1207,240 @@ def feather_patch(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
     return Image.fromarray(result, "RGB")
 
 
+def _adaptive_blend_radius(box, pixels, selection_mask=None):
+    x1, y1, x2, y2 = box
+    effective_width, effective_height = x2 - x1, y2 - y1
+    if selection_mask is not None:
+        mask_array = np.asarray(decode_selection_mask(selection_mask))
+        points = cv2.findNonZero((mask_array > 8).astype(np.uint8))
+        if points is not None:
+            _, _, mask_width, mask_height = cv2.boundingRect(points)
+            effective_width = min(effective_width, mask_width)
+            effective_height = min(effective_height, mask_height)
+    region_scale = round(min(effective_width, effective_height) * 0.015)
+    return max(3, min(32, max(int(pixels), region_scale)))
+
+
+def _blend_inputs(base, patch, box, selection_mask):
+    """Return aligned RGB arrays and a full-size editable alpha mask."""
+    x1, y1, x2, y2 = box
+    target_size = (x2 - x1, y2 - y1)
+    if patch.size != target_size:
+        patch = patch.resize(target_size, Image.Resampling.LANCZOS)
+
+    base_array = np.asarray(base.convert("RGB")).copy()
+    patch_array = np.asarray(patch.convert("RGB"))
+    height, width = base_array.shape[:2]
+    alpha = np.zeros((height, width), dtype=np.float32)
+    if selection_mask is None:
+        alpha[y1:y2, x1:x2] = 1.0
+        local_mask = None
+    else:
+        alpha = (
+            np.asarray(
+                decode_selection_mask(selection_mask, (width, height)),
+                dtype=np.float32,
+            )
+            / 255.0
+        )
+        alpha[:y1] = 0.0
+        alpha[y2:] = 0.0
+        alpha[:, :x1] = 0.0
+        alpha[:, x2:] = 0.0
+        local_mask = alpha[y1:y2, x1:x2]
+    if not np.any(alpha > (8.0 / 255.0)):
+        raise ValueError("涂抹选区为空")
+
+    target = base_array[y1:y2, x1:x2]
+    patch_array = _lab_harmonize_patch(patch_array, target, local_mask)
+    candidate = base_array.copy()
+    candidate[y1:y2, x1:x2] = patch_array
+    return base_array, candidate, np.clip(alpha, 0.0, 1.0)
+
+
+def _lab_harmonize_patch(patch, target, selection_level=None):
+    """Apply a bounded Lab correction near the editable boundary only."""
+    height, width = patch.shape[:2]
+    if selection_level is None:
+        selected = np.ones((height, width), dtype=np.uint8)
+    else:
+        selected = (selection_level > (8.0 / 255.0)).astype(np.uint8)
+    thickness = max(2, min(8, min(width, height) // 8))
+    eroded = cv2.erode(selected, np.ones((3, 3), np.uint8), iterations=thickness)
+    ring = selected.astype(bool) & ~eroded.astype(bool)
+    if np.count_nonzero(ring) < 12:
+        ring = selected.astype(bool)
+
+    patch_lab = cv2.cvtColor(patch, cv2.COLOR_RGB2LAB).astype(np.float32)
+    target_lab = cv2.cvtColor(target, cv2.COLOR_RGB2LAB).astype(np.float32)
+    difference = np.linalg.norm(patch_lab - target_lab, axis=2)
+    cutoff = float(np.percentile(difference[ring], 65))
+    samples = ring & (difference <= cutoff)
+    if np.count_nonzero(samples) < 8:
+        samples = ring
+
+    patch_l = patch_lab[:, :, 0][samples]
+    target_l = target_lab[:, :, 0][samples]
+    patch_iqr = float(np.percentile(patch_l, 75) - np.percentile(patch_l, 25))
+    target_iqr = float(np.percentile(target_l, 75) - np.percentile(target_l, 25))
+    gain = np.clip(target_iqr / max(patch_iqr, 1.0), 0.88, 1.12)
+    offsets = np.median(target_lab[samples] - patch_lab[samples], axis=0)
+    offsets[0] = np.clip(offsets[0], -24.0, 24.0)
+    offsets[1:] = np.clip(offsets[1:], -12.0, 12.0)
+
+    distance = cv2.distanceTransform(selected, cv2.DIST_L2, 5)
+    decay = np.exp(-distance / max(4.0, min(width, height) * 0.08))
+    decay = np.maximum(decay, ring.astype(np.float32))[:, :, None]
+    corrected = patch_lab.copy()
+    corrected_l = (patch_lab[:, :, 0] - np.median(patch_l)) * gain + np.median(
+        target_l
+    )
+    corrected[:, :, 0] += (corrected_l - patch_lab[:, :, 0]) * decay[:, :, 0]
+    corrected[:, :, 1:] += offsets[None, None, 1:] * decay
+    return cv2.cvtColor(
+        np.clip(corrected, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB
+    )
+
+
+def _srgb_to_linear(array):
+    value = array.astype(np.float32) / 255.0
+    return np.where(value <= 0.04045, value / 12.92, ((value + 0.055) / 1.055) ** 2.4)
+
+
+def _linear_to_srgb(array):
+    value = np.clip(array, 0.0, 1.0)
+    encoded = np.where(
+        value <= 0.0031308,
+        value * 12.92,
+        1.055 * np.power(value, 1.0 / 2.4) - 0.055,
+    )
+    return np.clip(encoded * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
+def _normalized_detail_maps(base_array):
+    gray = cv2.cvtColor(base_array, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
+    gradient = gradient_image(gray)
+    mean = cv2.GaussianBlur(gray, (0, 0), 2.0)
+    variance = np.maximum(
+        cv2.GaussianBlur(gray * gray, (0, 0), 2.0) - mean * mean, 0.0
+    )
+    texture = np.sqrt(variance)
+
+    def normalize(values):
+        scale = max(float(np.percentile(values, 95)), 1e-4)
+        return np.clip(values / scale, 0.0, 1.0)
+
+    return normalize(gradient), normalize(texture)
+
+
+def _inner_alpha(mask_level, radius, edge_map=None):
+    selected = (mask_level > (8.0 / 255.0)).astype(np.uint8)
+    distance = cv2.distanceTransform(selected, cv2.DIST_L2, 5)
+    if edge_map is None:
+        local_radius = float(radius)
+    else:
+        local_radius = np.maximum(1.5, radius * (1.0 - 0.72 * edge_map))
+    progress = np.clip(distance / local_radius, 0.0, 1.0)
+    smooth = progress * progress * (3.0 - 2.0 * progress)
+    return np.minimum(smooth, mask_level)
+
+
+def blend_color_light(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
+    """Lab harmonization + linear-light, edge-aware dual-frequency blending."""
+    base_array, candidate, mask_level = _blend_inputs(
+        base, patch, box, selection_mask
+    )
+    radius = _adaptive_blend_radius(box, pixels, selection_mask)
+    edge, _ = _normalized_detail_maps(base_array)
+    alpha_low = _inner_alpha(mask_level, radius * 1.8, edge * 0.45)[:, :, None]
+    alpha_high = _inner_alpha(mask_level, max(2.0, radius * 0.65), edge)[:, :, None]
+
+    base_linear = _srgb_to_linear(base_array)
+    candidate_linear = _srgb_to_linear(candidate)
+    sigma = max(1.5, radius * 1.35)
+    base_low = cv2.GaussianBlur(base_linear, (0, 0), sigma)
+    candidate_low = cv2.GaussianBlur(candidate_linear, (0, 0), sigma)
+    base_high = base_linear - base_low
+    candidate_high = candidate_linear - candidate_low
+    result = (
+        base_low * (1.0 - alpha_low)
+        + candidate_low * alpha_low
+        + base_high * (1.0 - alpha_high)
+        + candidate_high * alpha_high
+    )
+    return Image.fromarray(_linear_to_srgb(result), "RGB")
+
+
+def blend_confidence(
+    base,
+    patch,
+    box,
+    pixels=FEATHER_PIXELS,
+    selection_mask=None,
+    components=None,
+):
+    """Choose between stable blends using measured boundary residuals."""
+    base_array, _, mask_level = _blend_inputs(base, patch, box, selection_mask)
+    radius = _adaptive_blend_radius(box, pixels, selection_mask)
+    components = components or {}
+    color_image = components.get("color_light") or blend_color_light(
+        base, patch, box, pixels, selection_mask
+    )
+    original_image = components.get("original") or feather_patch(
+        base, patch, box, pixels, selection_mask
+    )
+    color = np.asarray(color_image, dtype=np.uint8)
+    original = np.asarray(original_image, dtype=np.uint8)
+    base_gray = cv2.cvtColor(base_array, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    selected = (mask_level > (8.0 / 255.0)).astype(np.uint8)
+    ring_kernel = np.ones(
+        (max(3, radius // 2) * 2 + 1, max(3, radius // 2) * 2 + 1), np.uint8
+    )
+    ring = cv2.dilate(selected, ring_kernel).astype(bool)
+    ring &= ~cv2.erode(selected, ring_kernel).astype(bool)
+    base_lab = cv2.cvtColor(base_array, cv2.COLOR_RGB2LAB).astype(np.float32)
+    ring_scores = []
+    for candidate_image in (original, color):
+        candidate_lab = cv2.cvtColor(candidate_image, cv2.COLOR_RGB2LAB).astype(
+            np.float32
+        )
+        color_error = np.linalg.norm(candidate_lab - base_lab, axis=2) / 40.0
+        candidate_gray = cv2.cvtColor(candidate_image, cv2.COLOR_RGB2GRAY).astype(
+            np.float32
+        )
+        gradient_error = np.abs(
+            cv2.Laplacian(candidate_gray, cv2.CV_32F)
+            - cv2.Laplacian(base_gray, cv2.CV_32F)
+        ) / 64.0
+        score = np.clip(0.62 * color_error + 0.38 * gradient_error, 0.0, 4.0)
+        values = score[ring]
+        ring_scores.append(float(np.median(values)) if values.size else 1.0)
+
+    # Use the measured seam quality as a global prior, then allow a soft local
+    # choice near the boundary. The original blend remains a stabilizing floor.
+    scores = np.asarray(ring_scores, dtype=np.float32)
+    quality = np.exp(-np.clip(scores - scores.min(), 0.0, 3.0) * 1.8)
+    quality = quality / max(float(quality.sum()), 1e-6)
+    candidate_stack = np.stack(
+        [_srgb_to_linear(original), _srgb_to_linear(color)],
+        axis=0,
+    )
+    weighted = np.tensordot(quality, candidate_stack, axes=(0, 0))
+    local_edge = _normalized_detail_maps(base_array)[0]
+    boundary_blend = _inner_alpha(mask_level, radius * 1.25, local_edge * 0.65)
+    boundary_blend = cv2.GaussianBlur(boundary_blend, (0, 0), max(1.0, radius * 0.25))
+    boundary_blend = np.clip(boundary_blend, 0.0, 1.0)[:, :, None]
+    result = _srgb_to_linear(base_array) * (1.0 - boundary_blend) + weighted * boundary_blend
+    return Image.fromarray(_linear_to_srgb(result), "RGB")
+
+
+BLEND_PIPELINES = (
+    ("original", "原始多频段", feather_patch),
+    ("color_light", "色光优先", blend_color_light),
+    ("confidence", "置信度自适应", blend_confidence),
+)
+
+
 def correction_layer(original, corrected, threshold=0):
     """Return an RGBA layer that reproduces corrected over original."""
     original_array = np.asarray(original.convert("RGB"))
@@ -1111,7 +1473,10 @@ def generate_correction_overlay(
 ):
     """Generate one or more full images / transparent overlays.
 
-    Returns a list of ``(overlay, box)`` tuples, one per requested image.
+    Local edits return one item per blend pipeline as
+    ``(overlay, box, method, label, source_index, comparison, alignment)``. A full-image
+    edit with a mask returns the original full result plus a confidence
+    composite; an unmasked full-image edit keeps the direct result only.
     """
     page = page_image.convert("RGB")
     x1, y1, x2, y2 = _clamp_box(target_box, page.width, page.height)
@@ -1132,10 +1497,55 @@ def generate_correction_overlay(
             generation_options=generation_options,
             count=count,
         )
-        return [
-            (generated.convert("RGBA"), (0, 0, generated.width, generated.height))
-            for generated in generated_list
-        ]
+        results = []
+        full_box = (0, 0, page.width, page.height)
+        for index, generated in enumerate(generated_list, start=1):
+            if editable_mask is None:
+                results.append(
+                    (
+                        generated.convert("RGBA"),
+                        (0, 0, generated.width, generated.height),
+                        "direct",
+                        "整图生成",
+                        index,
+                        False,
+                        {"moved": False, "dx": 0, "dy": 0, "improvement": 0.0},
+                    )
+                )
+                continue
+            aligned_generated, alignment = align_generated_to_source(
+                page, generated, editable_mask, return_info=True
+            )
+            results.append(
+                (
+                    aligned_generated.convert("RGBA"),
+                    full_box,
+                    "full_original",
+                    "整图生成",
+                    index,
+                    True,
+                    alignment,
+                )
+            )
+            corrected = blend_confidence(
+                page,
+                aligned_generated,
+                full_box,
+                pixels=max(1, int(feather_pixels)),
+                selection_mask=editable_mask,
+            )
+            results.append(
+                (
+                    correction_layer(page, corrected),
+                    full_box,
+                    "confidence",
+                    "置信度自适应",
+                    index,
+                    True,
+                    alignment,
+                )
+            )
+        return results
     if (
         selection_mask is None
         and x1 == 0
@@ -1155,8 +1565,16 @@ def generate_correction_overlay(
             count=count,
         )
         return [
-            (generated.convert("RGBA"), (0, 0, generated.width, generated.height))
-            for generated in generated_list
+            (
+                generated.convert("RGBA"),
+                (0, 0, generated.width, generated.height),
+                "direct",
+                "整图生成",
+                index,
+                False,
+                {"moved": False, "dx": 0, "dy": 0, "improvement": 0.0},
+            )
+            for index, generated in enumerate(generated_list, start=1)
         ]
     margin = max(int(context_pixels), int(feather_pixels) * 4)
     overlay_box = (
@@ -1199,16 +1617,36 @@ def generate_correction_overlay(
             count=count,
         )
     results = []
-    for generated_context in generated_context_list:
-        generated_target = generated_context.crop(local_target)
-        corrected_context = feather_patch(
-            context,
-            generated_target,
-            local_target,
-            pixels=max(1, int(feather_pixels)),
-            selection_mask=context_mask,
+    for source_index, generated_context in enumerate(
+        generated_context_list, start=1
+    ):
+        aligned_context, alignment = align_generated_to_source(
+            context, generated_context, context_mask, return_info=True
         )
-        results.append((correction_layer(context, corrected_context), overlay_box))
+        generated_target = aligned_context.crop(local_target)
+        computed = {}
+        for method, label, pipeline in BLEND_PIPELINES:
+            kwargs = {
+                "pixels": max(1, int(feather_pixels)),
+                "selection_mask": context_mask,
+            }
+            if method == "confidence":
+                kwargs["components"] = computed
+            corrected_context = pipeline(
+                context, generated_target, local_target, **kwargs
+            )
+            computed[method] = corrected_context
+            results.append(
+                (
+                    correction_layer(context, corrected_context),
+                    overlay_box,
+                    method,
+                    label,
+                    source_index,
+                    True,
+                    alignment,
+                )
+            )
     return results
 
 
