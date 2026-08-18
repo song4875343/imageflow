@@ -1,5 +1,5 @@
 {
-  "current_model": "yunqiao::gpt-image-2",
+  "current_model": "jojo::gpt-image-2",
   "models": [
     {
       "id": "jojo::gpt-image-2",
@@ -9,9 +9,9 @@
       "key": "sk-FJ9FidQDaP6yMmBk7rKeDNiNfoAaeBjBF7xAWqxAvVX29b4s"
     },
     {
-      "id": "未设置::gemini-3.1-flash-image",
+      "id": "反重力::gemini-3.1-flash-image",
       "model": "gemini-3.1-flash-image",
-      "provider": "未设置",
+      "provider": "反重力",
       "baseurl": "http://127.0.0.1:8045/v1",
       "key": "sk-23d3453d5efb42ec9ea3ada74f38a41b"
     },

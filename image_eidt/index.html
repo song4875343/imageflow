@@ -33,7 +33,7 @@
         
         .sidebar-btn { height:32px; min-height:32px; box-sizing:border-box; background:#0e639c; color:white; border:none; padding:0 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; }
         .sidebar-btn.secondary { background: #333; border: 1px solid #555; color: #ccc; }
-        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn) { height:32px; min-height:32px; box-sizing:border-box; }
+        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn):not(.generation-eye):not(.generation-compare-toggle) { height:32px; min-height:32px; box-sizing:border-box; }
         .sidebar-btn:hover { filter: brightness(1.05); }
         .expert-field { width:100%; box-sizing:border-box; padding:8px; background:#1f1f1f; color:#eee; border:1px solid #555; border-radius:4px; font:inherit; }
         .expert-icon-btn { width:32px; min-width:32px; height:32px; padding:0; font-size:16px; line-height:1; }
@@ -78,10 +78,11 @@
         .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
         .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
-        .generation-eye { position:absolute; top:-8px; right:2px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; color:#fff; background:transparent; cursor:pointer; font-size:15px; }
-        .generation-eye:hover, .generation-compare-toggle:hover { background:rgba(12,14,16,.3); }
-        .generation-eye.is-hidden { color:#737b84; }
-        .generation-compare-toggle { position:absolute; right:2px; bottom:-8px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; color:#fff; background:transparent; cursor:pointer; font-size:18px; line-height:1; }
+        .generation-eye, .generation-compare-toggle { position:absolute; right:4px; width:20px; height:20px; min-height:20px; display:grid; place-items:center; box-sizing:border-box; padding:0; border:1px solid rgba(255,255,255,.42); border-radius:4px; color:#fff; background:rgba(12,14,16,.82); box-shadow:0 2px 6px rgba(0,0,0,.35); cursor:pointer; line-height:1; }
+        .generation-eye { top:4px; font-size:13px; }
+        .generation-eye:hover, .generation-compare-toggle:hover { border-color:#8bd4ff; background:rgba(12,14,16,.96); }
+        .generation-eye.is-hidden { color:#9aa4ad; }
+        .generation-compare-toggle { bottom:4px; font-size:15px; }
         .generation-card.comparison-hidden { display:none; }
         .generation-kind { position:absolute; left:5px; bottom:5px; padding:2px 5px; border-radius:3px; color:#dfe8ef; background:rgba(0,0,0,.72); font-size:10px; }
         #sidebar > .control-group, #sidebar > .hint-box, #sidebar > h3 { display:none !important; }
@@ -284,7 +285,7 @@
         body[data-theme="light"] .generation-card.is-main::before { background:#1f5a45; }
         body[data-theme="light"] .generation-card img { background:#dfe4df; }
         body[data-theme="light"] .generation-kind { color:#203128; background:rgba(242,244,240,.94); }
-        body[data-theme="light"] .generation-eye { border:0; color:#38483f; background:transparent; }
+        body[data-theme="light"] .generation-eye, body[data-theme="light"] .generation-compare-toggle { border-color:rgba(25,44,35,.28); color:#38483f; background:rgba(255,255,255,.88); }
         body[data-theme="light"] .save-choice-overlay { background:rgba(20,29,24,.42); }
         body[data-theme="light"] .save-choice-panel { border-color:rgba(25,44,35,.24); background:#eef1ec; color:#203128; box-shadow:0 18px 55px rgba(20,31,25,.28); }
         body[data-theme="light"] .save-choice-title { color:#213129; }
@@ -521,7 +522,6 @@
                 </select>
             </div>
             <div id="expert-size-hint" class="hint-box">整图生成时生效；1K / 2K 配合右侧宽高比</div>
-            <div id="expert-size-warning" class="size-limit-warning" hidden></div>
             <label class="control-label" style="margin-top:11px; margin-bottom:5px;">生成张数</label>
             <input id="expert-generation-count" type="number" min="1" max="4" value="1" class="expert-field" style="height:32px;min-height:32px;padding:0 8px;" oninput="updateExpertGenerationCountHint()" title="同时生成几张图；GPT Image 2 用 n 参数一次返回，其他模型会自动多次提交">
             <div id="expert-count-hint" class="hint-box">生成 1 张</div>
@@ -753,30 +753,6 @@
             : '生成 1 张';
     }
 
-    function updateExpertSizeWarning(model=document.getElementById('expert-model')?.value) {
-        const hint = document.getElementById('expert-size-hint');
-        if (hint && canvas) {
-            const options = getExpertGenerationOptions(model);
-            hint.innerText = isGeminiImageModel(model)
-                ? `Gemini 请求：${options.imageSize} · ${options.aspectRatio} · 目标 ${options.width}×${options.height}`
-                : `gpt 目标 ${options.width}×${options.height}`;
-        }
-        const warning = document.getElementById('expert-size-warning');
-        if (!warning || !canvas || !isGptImage2Model(model)) {
-            if (warning) warning.hidden = true;
-            return false;
-        }
-        const options = getExpertGenerationOptions(model);
-        const longest = Math.max(Number(options.width) || 0, Number(options.height) || 0);
-        if (longest <= 2048) {
-            warning.hidden = true;
-            return false;
-        }
-        warning.innerText = `警告：GPT Image 2 当前设置尺寸为 ${options.width}×${options.height}，长边超过 2048。部分中转接口可能在 2K 以外出现异常生成，建议改为 2048 以内。`;
-        warning.hidden = false;
-        return true;
-    }
-
     function updateOutputSizeControlsForModel(model) {
         const gemini = isGeminiImageModel(model);
         const customLabel = document.querySelector('.custom-size-option');
@@ -787,7 +763,6 @@
             const preset = document.querySelector('input[name="expert-output-size"][value="1k"]');
             if (preset) preset.checked = true;
         }
-        updateExpertSizeWarning(model);
         updateExpertGenerationCountHint();
     }
 
@@ -994,7 +969,6 @@
         canvas.originalHeight = Math.round(mainObject.getScaledHeight());
         document.getElementById('expert-output-width').value = canvas.originalWidth;
         document.getElementById('expert-output-height').value = canvas.originalHeight;
-        updateExpertSizeWarning();
         canvas.sendToBack(mainObject);
         document.getElementById('generation-preview-items').prepend(entry.card);
         updateExpertEditScope();
@@ -1419,7 +1393,6 @@
         canvas.originalHeight = data.height;
         document.getElementById('expert-output-width').value = data.width;
         document.getElementById('expert-output-height').value = data.height;
-        updateExpertSizeWarning();
         resetGenerationPreviews();
 
         // ==========================================
@@ -2435,6 +2408,15 @@
         status.style.color = color || '#888';
     }
 
+    function logExpertDebug(event, details={}) {
+        console.info(`[image-edit] ${event}`, details);
+        try {
+            if (window.pywebview?.api?.debug_log) pywebview.api.debug_log(event, details);
+        } catch (error) {
+            console.warn('[image-edit] debug log failed', error);
+        }
+    }
+
     async function loadExpertModels(selectedModel) {
         const select = document.getElementById('expert-model');
         const status = document.getElementById('expert-status');
@@ -2472,11 +2454,6 @@
         try { await setCurrentExpertModel(event.target.value); }
         catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
     });
-    document.querySelectorAll('input[name="expert-output-size"], #expert-output-width, #expert-output-height, #expert-aspect-ratio').forEach(control => {
-        control.addEventListener('input', () => updateExpertSizeWarning());
-        control.addEventListener('change', () => updateExpertSizeWarning());
-    });
-
     function enterExpertMode() {
         if (!canvas) return;
         expertMode = true;
@@ -2730,16 +2707,6 @@
         const selectionPayload = refreshExpertSelectionPreview();
         if (!isFullImage && !selectionPayload) { setExpertStatus('局部修改请先绘制蒙版', '#f48771'); return; }
         const outputOptions = isFullImage ? getExpertGenerationOptions(model) : {width:null, height:null, imageSize:null, aspectRatio:null};
-        if (isFullImage && isGptImage2Model(model) && Math.max(outputOptions.width || 0, outputOptions.height || 0) > 2048) {
-            updateExpertSizeWarning(model);
-            const proceed = window.confirm(`GPT Image 2 当前设置为 ${outputOptions.width}×${outputOptions.height}，长边超过 2048。
-
-部分中转接口在 2K 以外可能出现异常生成。是否仍然继续？`);
-            if (!proceed) {
-                setExpertStatus('已取消生成：请将 GPT Image 2 长边设置为 2048 以内', '#dcdcaa');
-                return;
-            }
-        }
         let selectionMask = selectionPayload?.maskData || null;
         const sourceImage = exportCurrentCompositeImage();
         let bounds, guides;
@@ -2765,23 +2732,54 @@
             const raw = await pywebview.api.expert_edit_image(bounds.x,bounds.y,bounds.w,bounds.h,prompt,model,jobId,selectionMask,sourceImage,outputOptions.width,outputOptions.height,expertReferenceImages,outputOptions.imageSize,outputOptions.aspectRatio,isFullImage,generationCount);
             if (!expertBusy || expertJobId !== jobId) return;
             let result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            let pendingPatchRequests = [];
             if (result?.error === 'size_mismatch') {
                 const choice = await requestSizeMismatchChoice(result);
                 if (choice === 'abandon') throw new Error('已放弃本次尺寸不一致的生成结果');
                 const mismatchResults = Array.isArray(result.results) && result.results.length ? result.results : [result];
-                for (const item of mismatchResults) {
+                pendingPatchRequests = [];
+                for (let mismatchIndex = 0; mismatchIndex < mismatchResults.length; mismatchIndex += 1) {
+                    const item = mismatchResults[mismatchIndex];
+                    const mismatchSourceIndex = item.sourceIndex || mismatchIndex + 1;
+                    item.sourceIndex = mismatchSourceIndex;
+                    item.sourceCount = mismatchResults.length;
                     const hasMaskForMismatch = Boolean(sourceImage && selectionMask);
+                    const createFullImagePatch = isFullImage && choice === 'resize' && Boolean(sourceImage && selectionMask);
                     if (choice === 'resize' || (choice === 'actual' && hasMaskForMismatch)) {
                         const target = choice === 'resize' ? item.requested : item.actual;
+                        const resizeSource = createFullImagePatch || hasMaskForMismatch ? sourceImage : null;
+                        const resizeSelectionMask = choice === 'actual' && hasMaskForMismatch ? selectionMask : null;
+                        console.info('[image-edit] resize request', {
+                            itemId: item.id,
+                            choice,
+                            requested: item.requested,
+                            actual: item.actual,
+                            target,
+                            isFullImage,
+                            hasSource: Boolean(resizeSource),
+                            hasMask: Boolean(resizeSelectionMask),
+                        });
                         const resizedRaw = await pywebview.api.resize_image_data(
                             item.rawImageData || item.imageData,
                             target.width,
                             target.height,
-                            hasMaskForMismatch ? sourceImage : null,
-                            hasMaskForMismatch ? selectionMask : null
+                            resizeSource,
+                            resizeSelectionMask
                         );
                         const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
-                        if (resized?.error) throw new Error(resized.error);
+                        console.info('[image-edit] resize response', {
+                            itemId: item.id,
+                            keys: resized ? Object.keys(resized) : [],
+                            width: resized?.width,
+                            height: resized?.height,
+
+                            error: resized?.error,
+                            requestId: resized?.requestId,
+                        });
+                        if (resized?.error) {
+                            console.error('[image-edit] resize failed', resized);
+                            throw new Error(resized.message || resized.error);
+                        }
                         item.imageData = resized.imageData;
                         item.overlay = {x:0, y:0, w:resized.width, h:resized.height};
                         item.maskProtected = resized.maskProtected;
@@ -2789,6 +2787,14 @@
                         item.alignmentDx = Number(resized.alignmentDx) || 0;
                         item.alignmentDy = Number(resized.alignmentDy) || 0;
                         item.sizeDecision = choice;
+                        if (createFullImagePatch) {
+                            pendingPatchRequests.push({
+                                item,
+                                sourceImage,
+                                width:resized.width,
+                                height:resized.height,
+                            });
+                        }
                     } else {
                         item.overlay = {x:0, y:0, w:item.actual.width, h:item.actual.height};
                         item.maskProtected = Boolean(item.hasSelectionMask);
@@ -2810,29 +2816,90 @@
             }
             if (!result || result.error) throw new Error(result?.message || result?.error || '生成失败');
             const results = Array.isArray(result.results) && result.results.length ? result.results : [result];
+            logExpertDebug('results-ready', {
+                count: results.length,
+                items: results.map(item => ({
+                    id: item?.id,
+                    blendMethod: item?.blendMethod,
+                    blendComparison: Boolean(item?.blendComparison),
+                    width: item?.overlay?.w,
+                    height: item?.overlay?.h,
+                    imageDataLength: String(item?.imageData || '').length,
+                })),
+            });
             let addedCount = 0;
-            for (const item of results) {
-                if (!expertBusy || expertJobId !== jobId) return;
-                if (!item || item.error) throw new Error(item?.message || item?.error || '生成失败');
-                await new Promise((resolve, reject) => fabric.Image.fromURL(item.imageData, img => {
+            const addExpertResult = item => new Promise((resolve, reject) => {
+                logExpertDebug('fabric-load-start', {
+                    id: item.id,
+                    blendMethod: item.blendMethod,
+                    imageDataLength: String(item.imageData || '').length,
+                });
+                fabric.Image.fromURL(item.imageData, img => {
+                    logExpertDebug('fabric-load-callback', {
+                        id: item.id,
+                        loaded: Boolean(img),
+                        width: img?.width,
+                        height: img?.height,
+                    });
                     if (!img) { reject(new Error('返回图像加载失败')); return; }
                     finishExpertGuideGeneration(guides);
                     img.set({left:item.overlay.x,top:item.overlay.y,scaleX:item.overlay.w/img.width,scaleY:item.overlay.h/img.height,
                         selectable:true,evented:true,hasControls:false,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,
                         data:{type:'advanced-mask',id:item.id,assetId:item.assetId,target:item.target,previewVisible:true,isFullImage:isFullImage,blendMethod:item.blendMethod,blendLabel:item.blendLabel}});
                     const isBlendComparison = Boolean(item.blendComparison);
-                    const showByDefault = !isBlendComparison || item.blendMethod === 'confidence';
+                    const showByDefault = !isBlendComparison || item.blendMethod === 'confidence' || (item.sizeDecision === 'resize' && item.blendMethod === 'original');
                     img.set('visible', document.getElementById('toggle-advanced-mask').checked && showByDefault);
                     canvas.add(img);
-                    const sourceSuffix = Number(item.sourceCount) > 1 ? ` · 样本 ${item.sourceIndex}/${item.sourceCount}` : '';
+                    logExpertDebug('canvas-image-added', {id:item.id, visible:img.visible, canvasObjects:canvas.getObjects().length});
+                    const sourceSuffix = Number(item.sourceCount) > 1 ? ` ? 样本 ${item.sourceIndex}/${item.sourceCount}` : '';
                     const previewLabel = item.blendLabel
                         ? `${item.blendLabel}${sourceSuffix}`
                         : (results.length > 1 ? `${isFullImage ? '整图' : '局部'} ${addedCount + 1}/${results.length}` : undefined);
-                    const blendGroup = isBlendComparison ? `${jobId}:blend:${item.sourceIndex || addedCount}` : null;
-                    addGenerationPreview(item, img, isFullImage, {label: previewLabel, blendGroup});
+                    const blendGroup = item._blendGroup || (isBlendComparison ? `${jobId}:blend:${item.sourceIndex || addedCount}` : null);
+                    item._previewEntry = addGenerationPreview(item, img, isFullImage, {label:previewLabel, blendGroup});
                     reorderLayers();
                     canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); addedCount += 1; resolve();
-                }));
+                });
+            });
+            for (const item of results) {
+                if (!expertBusy || expertJobId !== jobId) return;
+                if (!item || item.error) throw new Error(item?.message || item?.error || '生成失败');
+                await addExpertResult(item);
+            }
+            for (const pending of pendingPatchRequests) {
+                try {
+                    const patchRaw = await Promise.race([
+                        pywebview.api.create_patch_image_data(pending.sourceImage, pending.item.imageData, pending.width, pending.height),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('补丁图生成超时')), 15000)),
+                    ]);
+                    const patch = typeof patchRaw === 'string' ? JSON.parse(patchRaw) : patchRaw;
+                    logExpertDebug('patch-response', {itemId:pending.item.id, keys:patch ? Object.keys(patch) : [], imageDataLength:String(patch?.imageData || '').length, error:patch?.error, requestId:patch?.requestId});
+                    if (patch?.error || !patch?.imageData) throw new Error(patch?.error || '补丁图为空');
+                    const blendGroup = `${jobId}:blend:${pending.item.sourceIndex || 0}`;
+                    pending.item.blendMethod = 'original';
+                    pending.item.blendLabel = '整图生成';
+                    pending.item.blendComparison = true;
+                    const directEntry = pending.item._previewEntry;
+                    if (directEntry) {
+                        directEntry.blendGroup = blendGroup;
+                        directEntry.blendMethod = 'original';
+                        directEntry.card.classList.add('comparison-hidden');
+                    }
+                    const patchItem = {...pending.item,
+                        id:`${pending.item.id}-patch`,
+                        assetId:`${pending.item.assetId}-patch`,
+                        imageData:patch.imageData,
+                        rawImageData:patch.imageData,
+                        blendMethod:'confidence',
+                        blendLabel:'补丁图',
+                        blendComparison:true,
+                        _blendGroup:blendGroup
+                    };
+                    await addExpertResult(patchItem);
+                } catch (error) {
+                    console.error('[image-edit] patch request failed', error);
+                    logExpertDebug('patch-error', {itemId:pending.item.id, message:error?.message || String(error)});
+                }
             }
             const sizeDecisionText = result.sizeDecision === 'resize' ? '（已强制缩放）' : result.sizeDecision === 'actual' ? '（采用返回尺寸）' : '';
             const maskProtectionText = result.maskProtected ? '，蒙版外已保护' : '';
@@ -2845,6 +2912,8 @@
                 : '';
             setExpertStatus(isFullImage ? `模型：${submittedModelLabel} · 整图已生成${countText}${sizeDecisionText}${maskProtectionText}${alignmentText}，尺寸 ${firstResult.overlay.w}×${firstResult.overlay.h}` : `模型：${submittedModelLabel} · 局部图片已生成${countText}${alignmentText}`, '#4ec9b0');
         } catch (error) {
+            console.error('[image-edit] expert edit failed', error);
+            logExpertDebug('expert-error', {message:error?.message || String(error), stack:error?.stack || ''});
             finishExpertGuideGeneration(guides);
             setExpertStatus(`模型：${model} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();
         } finally {

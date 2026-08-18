@@ -3,6 +3,7 @@
 import base64
 import io
 import json
+import logging
 import threading
 import uuid
 from pathlib import Path
@@ -10,11 +11,22 @@ from pathlib import Path
 import webview
 from PIL import Image
 
+LOG_PATH = Path(__file__).with_name("image_edit_debug.log")
+logging.basicConfig(
+    filename=LOG_PATH,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    encoding="utf-8",
+)
+logger = logging.getLogger(__name__)
+
+
 from image_edit import (
     add_image_model,
     update_image_model,
     delete_image_model,
     generate_correction_overlay,
+    correction_layer,
     composite_aligned_selection_result,
     OutputSizeMismatch,
     image_model_capability,
@@ -103,34 +115,114 @@ class ImageEditorAPI:
     def resize_image_data(
         self, image_data, width, height, source_image=None, selection_mask=None
     ):
+        request_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "resize start id=%s input=%s target=%sx%s source=%s mask=%s",
+            request_id,
+            len(str(image_data or "")),
+            width,
+            height,
+            bool(source_image),
+            bool(selection_mask),
+        )
         try:
             encoded = str(image_data).split(",", 1)[-1]
             image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
             target_size = (max(1, int(width)), max(1, int(height)))
             resized = image.resize(target_size, Image.Resampling.LANCZOS)
+            source = None
+            if source_image:
+                try:
+                    source_encoded = str(source_image).split(",", 1)[-1]
+                    source = Image.open(
+                        io.BytesIO(base64.b64decode(source_encoded))
+                    ).convert("RGB")
+                    logger.info(
+                        "resize source decoded id=%s source=%sx%s",
+                        request_id,
+                        source.width,
+                        source.height,
+                    )
+                except Exception:
+                    logger.exception("resize source decode failed id=%s", request_id)
+                    source = None
             mask_protected = bool(source_image and selection_mask)
             if mask_protected:
-                source_encoded = str(source_image).split(",", 1)[-1]
-                source = Image.open(
-                    io.BytesIO(base64.b64decode(source_encoded))
-                ).convert("RGB")
                 resized, alignment = composite_aligned_selection_result(
                     source, resized, selection_mask, target_size, return_info=True
                 )
             else:
                 alignment = {"moved": False, "dx": 0, "dy": 0}
+            payload = {
+                "imageData": _data_url(resized),
+                "width": resized.width,
+                "height": resized.height,
+                "maskProtected": mask_protected,
+                "alignmentMoved": bool(alignment.get("moved")),
+                "alignmentDx": int(alignment.get("dx", 0)),
+                "alignmentDy": int(alignment.get("dy", 0)),
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            logger.info(
+                "resize success id=%s output=%sx%s patch=%s",
+                request_id,
+                resized.width,
+                resized.height,
+                "patchImageData" in payload,
+            )
+            return result
+        except Exception as exc:
+            logger.exception("resize failed id=%s", request_id)
             return json.dumps(
-                {
-                    "imageData": _data_url(resized),
-                    "width": resized.width,
-                    "height": resized.height,
-                    "maskProtected": mask_protected,
-                    "alignmentMoved": bool(alignment.get("moved")),
-                    "alignmentDx": int(alignment.get("dx", 0)),
-                    "alignmentDy": int(alignment.get("dy", 0)),
-                },
+                {"error": str(exc), "requestId": request_id}, ensure_ascii=False
+            )
+
+    def create_patch_image_data(self, source_image, image_data, width, height):
+        request_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "patch start id=%s source=%s image=%s target=%sx%s",
+            request_id,
+            len(str(source_image or "")),
+            len(str(image_data or "")),
+            width,
+            height,
+        )
+        try:
+            source_encoded = str(source_image).split(",", 1)[-1]
+            image_encoded = str(image_data).split(",", 1)[-1]
+            source = Image.open(io.BytesIO(base64.b64decode(source_encoded))).convert("RGB")
+            image = Image.open(io.BytesIO(base64.b64decode(image_encoded))).convert("RGB")
+            target_size = (max(1, int(width)), max(1, int(height)))
+            source = source.resize(target_size, Image.Resampling.LANCZOS)
+            image = image.resize(target_size, Image.Resampling.LANCZOS)
+            patch = correction_layer(source, image)
+            alpha = patch.getchannel("A")
+            encoded_patch = _data_url(patch)
+            logger.info(
+                "patch success id=%s output=%sx%s encoded=%s alpha_bbox=%s alpha_extrema=%s",
+                request_id,
+                patch.width,
+                patch.height,
+                len(encoded_patch),
+                alpha.getbbox(),
+                alpha.getextrema(),
+            )
+            return json.dumps(
+                {"imageData": encoded_patch, "width": patch.width, "height": patch.height},
                 ensure_ascii=False,
             )
+        except Exception as exc:
+            logger.exception("patch failed id=%s", request_id)
+            return json.dumps({"error": str(exc), "requestId": request_id}, ensure_ascii=False)
+
+    def debug_log(self, event, details=None):
+        try:
+            logger.info(
+                "frontend event=%s details=%s",
+                str(event),
+                json.dumps(details or {}, ensure_ascii=False, default=str),
+            )
+            return json.dumps({"success": True})
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
