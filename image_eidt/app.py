@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 import webview
-from PIL import Image
+from PIL import Image, ImageChops
 
 LOG_PATH = Path(__file__).with_name("image_edit_debug.log")
 logging.basicConfig(
@@ -27,7 +27,9 @@ from image_edit import (
     delete_image_model,
     generate_correction_overlay,
     correction_layer,
-    composite_aligned_selection_result,
+    blend_confidence,
+    align_generated_to_source,
+    decode_selection_mask,
     OutputSizeMismatch,
     image_model_capability,
     load_image_model_config,
@@ -52,7 +54,7 @@ class ImageEditorAPI:
 
     def open_image(self):
         result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            webview.FileDialog.OPEN,
             file_types=(
                 "Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif)",
                 "All files (*.*)",
@@ -88,7 +90,7 @@ class ImageEditorAPI:
                 else "edited.png"
             )
             result = self._window.create_file_dialog(
-                webview.SAVE_DIALOG,
+                webview.FileDialog.SAVE,
                 save_filename=default_name,
                 file_types=(
                     "PNG image (*.png)",
@@ -113,7 +115,13 @@ class ImageEditorAPI:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
     def resize_image_data(
-        self, image_data, width, height, source_image=None, selection_mask=None
+        self,
+        image_data,
+        width,
+        height,
+        source_image=None,
+        selection_mask=None,
+        fit_to_source=False,
     ):
         request_id = uuid.uuid4().hex[:8]
         logger.info(
@@ -128,8 +136,7 @@ class ImageEditorAPI:
         try:
             encoded = str(image_data).split(",", 1)[-1]
             image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
-            target_size = (max(1, int(width)), max(1, int(height)))
-            resized = image.resize(target_size, Image.Resampling.LANCZOS)
+            requested_size = (max(1, int(width)), max(1, int(height)))
             source = None
             if source_image:
                 try:
@@ -146,10 +153,45 @@ class ImageEditorAPI:
                 except Exception:
                     logger.exception("resize source decode failed id=%s", request_id)
                     source = None
+            target_size = (
+                source.size
+                if fit_to_source and source is not None
+                else requested_size
+            )
+            resized = image.resize(target_size, Image.Resampling.LANCZOS)
+            logger.info(
+                "resize target id=%s requested=%sx%s effective=%sx%s fit_to_source=%s",
+                request_id,
+                requested_size[0],
+                requested_size[1],
+                target_size[0],
+                target_size[1],
+                bool(fit_to_source),
+            )
             mask_protected = bool(source_image and selection_mask)
+            patch_image = None
+            pre_alignment = resized.copy() if mask_protected else None
             if mask_protected:
-                resized, alignment = composite_aligned_selection_result(
-                    source, resized, selection_mask, target_size, return_info=True
+                # Match the normal full-image flow: resize first, then align the
+                # generated image, then produce the confidence-fused patch.
+                source_target = source.resize(target_size, Image.Resampling.LANCZOS)
+                aligned, alignment = align_generated_to_source(
+                    source_target, resized, selection_mask, return_info=True
+                )
+                corrected = blend_confidence(
+                    source_target,
+                    aligned,
+                    (0, 0, target_size[0], target_size[1]),
+                    selection_mask=selection_mask,
+                )
+                resized = aligned
+                patch_image = correction_layer(source_target, corrected)
+                # correction_layer detects pixel differences, while confidence
+                # blending feathers across the boundary. Keep that blend, but
+                # constrain the returned patch to the actual selection mask.
+                patch_mask = decode_selection_mask(selection_mask, target_size)
+                patch_image.putalpha(
+                    ImageChops.multiply(patch_image.getchannel("A"), patch_mask)
                 )
             else:
                 alignment = {"moved": False, "dx": 0, "dy": 0}
@@ -162,6 +204,12 @@ class ImageEditorAPI:
                 "alignmentDx": int(alignment.get("dx", 0)),
                 "alignmentDy": int(alignment.get("dy", 0)),
             }
+            if pre_alignment is not None:
+                payload["preAlignmentImageData"] = _data_url(pre_alignment)
+            if patch_image is not None:
+                payload["patchImageData"] = _data_url(patch_image)
+                payload["patchWidth"] = patch_image.width
+                payload["patchHeight"] = patch_image.height
             result = json.dumps(payload, ensure_ascii=False)
             logger.info(
                 "resize success id=%s output=%sx%s patch=%s",

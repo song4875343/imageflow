@@ -20,6 +20,9 @@ INPUT_FOLDER = "img_input"
 OUTPUT_FOLDER = "img"
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
 FEATHER_PIXELS = 6
+ALIGNMENT_BAND_RATIO = 0.015
+ALIGNMENT_BAND_MIN = 8
+ALIGNMENT_BAND_MAX = 32
 PYRAMID_LEVELS = 4
 MATCH_SCALES = (1.0, 0.95, 1.05, 0.90, 1.10, 0.85, 1.15, 0.80, 1.20)
 MIN_MATCH_CONFIDENCE = 0.80
@@ -469,7 +472,7 @@ def decode_selection_mask(selection_mask, size=None):
 def align_generated_to_source(
     source, generated, selection_mask=None, max_shift=8, return_info=False
 ):
-    """Align from an outside mask ring when a small shift clearly improves it."""
+    """Align using only a narrow band immediately outside the selection mask."""
     source_image = source.convert("RGB")
     generated_image = generated.convert("RGB")
     if generated_image.size != source_image.size:
@@ -486,9 +489,19 @@ def align_generated_to_source(
     if not np.any(selected):
         return (generated_image, unchanged) if return_info else generated_image
 
-    ring_width = max(4, min(12, int(round(min(width, height) * 0.008))))
-    kernel = np.ones((ring_width * 2 + 1, ring_width * 2 + 1), np.uint8)
-    ring = cv2.dilate(selected, kernel).astype(bool) & ~selected.astype(bool)
+    # Build a true distance band outside the mask. Pixels elsewhere in the
+    # image must not influence the registration because the generated image can
+    # legitimately differ there.
+    band_width = max(
+        ALIGNMENT_BAND_MIN,
+        min(
+            ALIGNMENT_BAND_MAX,
+            int(round(min(width, height) * ALIGNMENT_BAND_RATIO)),
+        ),
+    )
+    outside = (~selected.astype(bool)).astype(np.uint8)
+    outside_distance = cv2.distanceTransform(outside, cv2.DIST_L2, 5)
+    ring = (outside_distance > 0.0) & (outside_distance <= float(band_width))
     if int(np.count_nonzero(ring)) < 64:
         return (generated_image, unchanged) if return_info else generated_image
 

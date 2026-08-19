@@ -2748,7 +2748,10 @@
                     if (choice === 'resize' || (choice === 'actual' && hasMaskForMismatch)) {
                         const target = choice === 'resize' ? item.requested : item.actual;
                         const resizeSource = createFullImagePatch || hasMaskForMismatch ? sourceImage : null;
-                        const resizeSelectionMask = choice === 'actual' && hasMaskForMismatch ? selectionMask : null;
+                        // The resize path also needs the mask: without it the
+                        // backend cannot produce the masked confidence patch and
+                        // the frontend falls back to a full-image diff patch.
+                        const resizeSelectionMask = hasMaskForMismatch ? selectionMask : null;
                         console.info('[image-edit] resize request', {
                             itemId: item.id,
                             choice,
@@ -2764,7 +2767,8 @@
                             target.width,
                             target.height,
                             resizeSource,
-                            resizeSelectionMask
+                            resizeSelectionMask,
+                            createFullImagePatch
                         );
                         const resized = typeof resizedRaw === 'string' ? JSON.parse(resizedRaw) : resizedRaw;
                         console.info('[image-edit] resize response', {
@@ -2786,6 +2790,10 @@
                         item.alignmentMoved = Boolean(resized.alignmentMoved);
                         item.alignmentDx = Number(resized.alignmentDx) || 0;
                         item.alignmentDy = Number(resized.alignmentDy) || 0;
+                        item.patchImageData = resized.patchImageData || null;
+                        item.patchWidth = Number(resized.patchWidth) || resized.width;
+                        item.patchHeight = Number(resized.patchHeight) || resized.height;
+                        item.preAlignmentImageData = resized.preAlignmentImageData || null;
                         item.sizeDecision = choice;
                         if (createFullImagePatch) {
                             pendingPatchRequests.push({
@@ -2793,6 +2801,7 @@
                                 sourceImage,
                                 width:resized.width,
                                 height:resized.height,
+                                patchImageData:resized.patchImageData || null,
                             });
                         }
                     } else {
@@ -2868,11 +2877,16 @@
             }
             for (const pending of pendingPatchRequests) {
                 try {
-                    const patchRaw = await Promise.race([
-                        pywebview.api.create_patch_image_data(pending.sourceImage, pending.item.imageData, pending.width, pending.height),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('补丁图生成超时')), 15000)),
-                    ]);
-                    const patch = typeof patchRaw === 'string' ? JSON.parse(patchRaw) : patchRaw;
+                    let patch;
+                    if (pending.patchImageData) {
+                        patch = {imageData:pending.patchImageData, width:pending.item.patchWidth || pending.width, height:pending.item.patchHeight || pending.height};
+                    } else {
+                        const patchRaw = await Promise.race([
+                            pywebview.api.create_patch_image_data(pending.sourceImage, pending.item.imageData, pending.width, pending.height),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('补丁图生成超时')), 15000)),
+                        ]);
+                        patch = typeof patchRaw === 'string' ? JSON.parse(patchRaw) : patchRaw;
+                    }
                     logExpertDebug('patch-response', {itemId:pending.item.id, keys:patch ? Object.keys(patch) : [], imageDataLength:String(patch?.imageData || '').length, error:patch?.error, requestId:patch?.requestId});
                     if (patch?.error || !patch?.imageData) throw new Error(patch?.error || '补丁图为空');
                     const blendGroup = `${jobId}:blend:${pending.item.sourceIndex || 0}`;
@@ -2884,6 +2898,19 @@
                         directEntry.blendGroup = blendGroup;
                         directEntry.blendMethod = 'original';
                         directEntry.card.classList.add('comparison-hidden');
+                    }
+                    if (pending.item.preAlignmentImageData) {
+                        const preAlignmentItem = {...pending.item,
+                            id:`${pending.item.id}-pre-alignment`,
+                            assetId:`${pending.item.assetId}-pre-alignment`,
+                            imageData:pending.item.preAlignmentImageData,
+                            rawImageData:pending.item.preAlignmentImageData,
+                            blendMethod:'pre_alignment',
+                            blendLabel:'未对齐生成图',
+                            blendComparison:true,
+                            _blendGroup:blendGroup
+                        };
+                        await addExpertResult(preAlignmentItem);
                     }
                     const patchItem = {...pending.item,
                         id:`${pending.item.id}-patch`,
