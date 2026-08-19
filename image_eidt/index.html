@@ -33,7 +33,7 @@
         
         .sidebar-btn { height:32px; min-height:32px; box-sizing:border-box; background:#0e639c; color:white; border:none; padding:0 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; }
         .sidebar-btn.secondary { background: #333; border: 1px solid #555; color: #ccc; }
-        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn):not(.generation-eye):not(.generation-compare-toggle) { height:32px; min-height:32px; box-sizing:border-box; }
+        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn):not(.generation-eye):not(.generation-compare-toggle):not(.generation-fine-tune) { height:32px; min-height:32px; box-sizing:border-box; }
         .sidebar-btn:hover { filter: brightness(1.05); }
         .expert-field { width:100%; box-sizing:border-box; padding:8px; background:#1f1f1f; color:#eee; border:1px solid #555; border-radius:4px; font:inherit; }
         .expert-icon-btn { width:32px; min-width:32px; height:32px; padding:0; font-size:16px; line-height:1; }
@@ -78,11 +78,13 @@
         .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
         .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
-        .generation-eye, .generation-compare-toggle { position:absolute; right:4px; width:20px; height:20px; min-height:20px; display:grid; place-items:center; box-sizing:border-box; padding:0; border:1px solid rgba(255,255,255,.42); border-radius:4px; color:#fff; background:rgba(12,14,16,.82); box-shadow:0 2px 6px rgba(0,0,0,.35); cursor:pointer; line-height:1; }
+        .generation-eye, .generation-compare-toggle, .generation-fine-tune { position:absolute; right:4px; width:20px; height:20px; min-height:20px; display:grid; place-items:center; box-sizing:border-box; padding:0; border:1px solid rgba(255,255,255,.42); border-radius:4px; color:#fff; background:rgba(12,14,16,.82); box-shadow:0 2px 6px rgba(0,0,0,.35); cursor:pointer; line-height:1; }
         .generation-eye { top:4px; font-size:13px; }
-        .generation-eye:hover, .generation-compare-toggle:hover { border-color:#8bd4ff; background:rgba(12,14,16,.96); }
+        .generation-eye:hover, .generation-compare-toggle:hover, .generation-fine-tune:hover { border-color:#8bd4ff; background:rgba(12,14,16,.96); }
         .generation-eye.is-hidden { color:#9aa4ad; }
         .generation-compare-toggle { bottom:4px; font-size:15px; }
+        .generation-fine-tune { right:28px; bottom:4px; font-size:13px; }
+        .generation-fine-tune.is-active { border-color:#55b7f0; color:#8bd4ff; background:rgba(14,99,156,.92); }
         .generation-card.comparison-hidden { display:none; }
         .generation-kind { position:absolute; left:5px; bottom:5px; padding:2px 5px; border-radius:3px; color:#dfe8ef; background:rgba(0,0,0,.72); font-size:10px; }
         #sidebar > .control-group, #sidebar > .hint-box, #sidebar > h3 { display:none !important; }
@@ -214,7 +216,7 @@
         body[data-theme="light"] .generation-kind { color:#333; background:rgba(255,255,255,.92); }
         body[data-theme="light"] .generation-eye { color:#555; }
         body[data-theme="light"] .generation-compare-toggle { color:#38483f; }
-        body[data-theme="light"] .generation-eye:hover, body[data-theme="light"] .generation-compare-toggle:hover { background:rgba(25,44,35,.1); }
+        body[data-theme="light"] .generation-eye:hover, body[data-theme="light"] .generation-compare-toggle:hover, body[data-theme="light"] .generation-fine-tune:hover { background:rgba(25,44,35,.1); }
         body[data-theme="light"] .save-choice-overlay { background:rgba(50,54,60,.4); }
         body[data-theme="light"] .save-choice-panel { border-color:#d8dce1; background:#ffffff; color:#222831; box-shadow:0 18px 55px rgba(30,35,42,.28); }
         body[data-theme="light"] .save-choice-title { color:#111827; }
@@ -285,7 +287,7 @@
         body[data-theme="light"] .generation-card.is-main::before { background:#1f5a45; }
         body[data-theme="light"] .generation-card img { background:#dfe4df; }
         body[data-theme="light"] .generation-kind { color:#203128; background:rgba(242,244,240,.94); }
-        body[data-theme="light"] .generation-eye, body[data-theme="light"] .generation-compare-toggle { border-color:rgba(25,44,35,.28); color:#38483f; background:rgba(255,255,255,.88); }
+        body[data-theme="light"] .generation-eye, body[data-theme="light"] .generation-compare-toggle, body[data-theme="light"] .generation-fine-tune { border-color:rgba(25,44,35,.28); color:#38483f; background:rgba(255,255,255,.88); }
         body[data-theme="light"] .save-choice-overlay { background:rgba(20,29,24,.42); }
         body[data-theme="light"] .save-choice-panel { border-color:rgba(25,44,35,.24); background:#eef1ec; color:#203128; box-shadow:0 18px 55px rgba(20,31,25,.28); }
         body[data-theme="light"] .save-choice-title { color:#213129; }
@@ -626,6 +628,7 @@
     const generationPreviewObjects = new Map();
     const expandedBlendGroups = new Set();
     let selectedPreviewId = null;
+    let fineTunePreviewId = null;
     let annotationColor = '#ff5252';
     let annotationMode = null;
     let sizeMismatchResolver = null;
@@ -774,6 +777,7 @@
         generationPreviewObjects.clear();
         expandedBlendGroups.clear();
         selectedPreviewId = null;
+        fineTunePreviewId = null;
         annotationMode = null;
         annotationMarkerNumber = 1;
         updateAnnotationMarkerButton();
@@ -800,6 +804,13 @@
                 groupEntries.forEach(item => {
                     if (item.blendMethod !== 'confidence') item.card.classList.toggle('comparison-hidden', !expanded);
                 });
+            }
+            if (entry.fineTuneButton) {
+                const active = fineTunePreviewId === entry.previewId;
+                entry.fineTuneButton.classList.toggle('is-active', active);
+                entry.fineTuneButton.innerText = active ? '✓' : '↕';
+                entry.fineTuneButton.title = active ? '退出微调' : '微调补丁位置';
+                entry.fineTuneButton.setAttribute('aria-label', entry.fineTuneButton.title);
             }
             entry.card.classList.toggle('is-main', Boolean(entry.isMain));
             entry.card.classList.toggle('is-selected', entry.previewId === selectedPreviewId);
@@ -830,6 +841,7 @@
 
     function selectGenerationPreview(previewId) {
         stopAnnotationMode();
+        if (fineTunePreviewId && fineTunePreviewId !== previewId) fineTunePreviewId = null;
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
         if (!entry || !objects.length) return;
@@ -845,6 +857,22 @@
         document.getElementById('preview-selection-toolbar').hidden = false;
         syncGenerationPreviewVisibility();
         canvas.requestRenderAll();
+    }
+
+    function toggleFineTune(previewId) {
+        const entry = generationPreviewObjects.get(previewId);
+        const objects = previewEntryObjects(entry);
+        if (!entry?.isPatch || objects.length !== 1) return;
+        if (fineTunePreviewId === previewId) {
+            fineTunePreviewId = null;
+            syncGenerationPreviewVisibility();
+            setExpertStatus('已退出补丁微调', '#dcdcaa');
+            return;
+        }
+        selectGenerationPreview(previewId);
+        fineTunePreviewId = previewId;
+        syncGenerationPreviewVisibility();
+        setExpertStatus('补丁微调已开启：使用方向键每次移动 1 像素', '#dcdcaa');
     }
 
     function addGenerationPreview(result, objectOrObjects, isFullImage, options={}) {
@@ -897,8 +925,22 @@
             };
             card.append(compareButton);
         }
+        let fineTuneButton = null;
+        if (options.isPatch || result.blendLabel === '补丁图') {
+            fineTuneButton = document.createElement('button');
+            fineTuneButton.className = 'generation-fine-tune';
+            fineTuneButton.type = 'button';
+            fineTuneButton.innerText = '↕';
+            fineTuneButton.title = '微调补丁位置';
+            fineTuneButton.setAttribute('aria-label', '微调补丁位置');
+            fineTuneButton.onclick = event => {
+                event.stopPropagation();
+                toggleFineTune(previewId);
+            };
+            card.append(fineTuneButton);
+        }
         if (options.prepend) items.prepend(card); else items.appendChild(card);
-        const entry = {previewId, objects, button:eye, compareButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask)};
+        const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch:Boolean(options.isPatch || result.blendLabel === '补丁图')};
         generationPreviewObjects.set(previewId, entry);
         syncGenerationPreviewVisibility();
         return entry;
@@ -915,6 +957,7 @@
             return;
         }
         const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
+        if (entries.some(item => item.previewId === fineTunePreviewId)) fineTunePreviewId = null;
         deletedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
         if (entries.some(item => item.isSelectionMask)) {
             expertRectGuides = expertRectGuides.filter(object => !deletedObjects.includes(object));
@@ -1614,6 +1657,25 @@
                 if (!arrowKeys.includes(e.key)) return;
                 // 如果没有 canvas 或没有选中对象，忽略
                 if (!canvas) return;
+                if (fineTunePreviewId) {
+                    const fineTuneEntry = generationPreviewObjects.get(fineTunePreviewId);
+                    const fineTuneObjects = previewEntryObjects(fineTuneEntry);
+                    if (fineTuneEntry?.isPatch && fineTuneObjects.length === 1) {
+                        const patchObject = fineTuneObjects[0];
+                        const step = 1;
+                        if (e.key === 'ArrowUp') patchObject.top = (patchObject.top || 0) - step;
+                        if (e.key === 'ArrowDown') patchObject.top = (patchObject.top || 0) + step;
+                        if (e.key === 'ArrowLeft') patchObject.left = (patchObject.left || 0) - step;
+                        if (e.key === 'ArrowRight') patchObject.left = (patchObject.left || 0) + step;
+                        patchObject.setCoords();
+                        canvas.requestRenderAll();
+                        pushHistoryForPage(currentPageGlobal);
+                        e.preventDefault();
+                        return;
+                    }
+                    fineTunePreviewId = null;
+                    syncGenerationPreviewVisibility();
+                }
                 let activeObjects = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
                 if (!activeObjects || activeObjects.length === 0) return;
 
