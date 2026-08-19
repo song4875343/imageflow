@@ -875,8 +875,17 @@
         setExpertStatus('补丁微调已开启：使用方向键每次移动 1 像素', '#dcdcaa');
     }
 
+    function isPatchResult(result, options={}) {
+        return Boolean(
+            options.isPatch
+            || result.blendLabel === '补丁图'
+            || ['original', 'color_light', 'confidence'].includes(result.blendMethod)
+        );
+    }
+
     function addGenerationPreview(result, objectOrObjects, isFullImage, options={}) {
         const objects = Array.isArray(objectOrObjects) ? objectOrObjects : [objectOrObjects];
+        const isPatch = isPatchResult(result, options);
         const items = document.getElementById('generation-preview-items');
         items.querySelector('.generation-preview-empty')?.remove();
         const previewId = options.previewId || `preview-${result.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -926,7 +935,7 @@
             card.append(compareButton);
         }
         let fineTuneButton = null;
-        if (options.isPatch || result.blendLabel === '补丁图') {
+        if (isPatch) {
             fineTuneButton = document.createElement('button');
             fineTuneButton.className = 'generation-fine-tune';
             fineTuneButton.type = 'button';
@@ -940,7 +949,7 @@
             card.append(fineTuneButton);
         }
         if (options.prepend) items.prepend(card); else items.appendChild(card);
-        const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch:Boolean(options.isPatch || result.blendLabel === '补丁图')};
+        const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch};
         generationPreviewObjects.set(previewId, entry);
         syncGenerationPreviewVisibility();
         return entry;
