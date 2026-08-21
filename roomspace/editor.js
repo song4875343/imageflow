@@ -2081,7 +2081,7 @@ export function createPlanEditor(options) {
       if (activeKind === 'camera') {
         draftItem = { id: makeId('camera'), kind: 'camera', componentType: 'camera', material: DEFAULT_MATERIALS.camera, position: [round(point.x), round(point.z)], target: [round(point.x), round(point.z - 1)], focalLength: definition.focalLength ?? 35, cameraHeight: definition.cameraHeight ?? 1.65 };
       } else {
-        draftItem = { id: makeId(activeKind), kind: activeKind, componentType: activeKind, material: DEFAULT_MATERIALS[activeKind], color: '#678c87', position: [round(point.x), round(point.z)], size: [definition.length, definition.width], height: activeKind === 'curtainWall' || activeKind === 'pillar' ? getActiveModel().height : definition.height, roomHeight: getActiveModel().height, sillHeight: activeKind === 'window' ? definition.sillHeight ?? 0.66 : 0, openAngle: activeKind === 'door' ? definition.openAngle ?? 0 : undefined, rotation: 0, mirrorX: false, mirrorZ: false };
+        draftItem = { id: makeId(activeKind), kind: activeKind, componentType: activeKind, material: DEFAULT_MATERIALS[activeKind], color: '#e1dfd8', position: [round(point.x), round(point.z)], size: [definition.length, definition.width], height: activeKind === 'curtainWall' || activeKind === 'pillar' ? getActiveModel().height : definition.height, roomHeight: getActiveModel().height, sillHeight: activeKind === 'window' ? definition.sillHeight ?? 0.66 : 0, openAngle: activeKind === 'door' ? definition.openAngle ?? 0 : undefined, rotation: 0, mirrorX: false, mirrorZ: false };
         if (activeKind === 'pillar') {
           draftItem.pillarShape = definition.pillarShape;
           normalizePillar(draftItem);

@@ -102,6 +102,9 @@
         .imgedit-nav-item:hover { background:rgba(255,255,255,.1); color:#fff; }
         .imgedit-nav-item.active { background:#0e639c; color:#fff; }
         .imgedit-nav-item svg { width:22px; height:22px; fill:currentColor; }
+        .imgedit-panel-toggle[aria-pressed="false"] { color:#55b7f0; background:rgba(85,183,240,.12); }
+        body.global-panels-hidden #expert-panel,
+        body.global-panels-hidden #generation-preview { display:none !important; }
         #expert-panel { display:block !important; }
         #page-nav { display:none !important; }
         .edit-scope-switch { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
@@ -244,6 +247,7 @@
         body[data-theme="light"] #hex-code { color:#333 !important; }
         body[data-theme="light"] #roomspace-view { background:#dfe4df; }
         body[data-theme="light"] #roomspace-view iframe { background:#dfe4df; }
+        body[data-theme="light"] .imgedit-panel-toggle[aria-pressed="false"] { color:#0d5e96; background:rgba(13,94,150,.1); }
 
         /* Keep image_edit on roomspace's light palette. */
         body[data-theme="light"] { background-color:#dfe4df; color:#203128; }
@@ -337,6 +341,11 @@
             </svg>
             <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75 9.75 9.75 0 0 1 8.25 6c0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25 9.75 9.75 0 0 0 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>
+            </svg>
+        </div>
+        <div class="imgedit-nav-item imgedit-panel-toggle" data-view="panels" role="button" tabindex="0" onclick="toggleGlobalPanels()" title="隐藏参数栏和缩略图" aria-label="隐藏参数栏和缩略图" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill-rule="evenodd" d="M9 21a1 1 0 0 1-1-1v-1.18a6.998 6.998 0 0 1-2.52-11.2A7 7 0 0 1 17.5 8.2a7 7 0 0 1-.98 9.62V20a1 1 0 0 1-1 1H9Zm1-2h5v-1.34a1 1 0 0 1 .38-.78A5 5 0 1 0 8.62 17.1a1 1 0 0 1 .38.78V19Zm-.5 4a1 1 0 1 1 0-2h5a1 1 0 1 1 0 2h-5ZM9 11a1 1 0 0 1 1-1h1V8a1 1 0 1 1 2 0v2h1a1 1 0 1 1 0 2h-1v2a1 1 0 1 1-2 0v-2h-1a1 1 0 0 1-1-1Z" clip-rule="evenodd" />
             </svg>
         </div>
         <div class="imgedit-nav-item imgedit-settings-btn" data-view="settings" role="button" tabindex="0" onclick="toggleExpertSettings()" title="设置">
@@ -4057,6 +4066,7 @@
         try { pywebview.api.set_theme(theme); } catch (_) {}
     }
     let currentTheme = getThemePreference();
+    let globalPanelsVisible = true;
     function getCanvasThemeColor() {
         return document.body.dataset.theme === 'light' ? '#dfe4df' : '#524f4f';
     }
@@ -4080,6 +4090,25 @@
     }
     function toggleTheme() {
         applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    }
+    function postRoomspacePanelVisibility(visible) {
+        const frame = document.getElementById('roomspace-frame');
+        if (frame?.contentWindow) frame.contentWindow.postMessage({ type: 'roomspace-panel-visibility', visible }, '*');
+    }
+    function setGlobalPanelsVisible(visible, notifyRoomspace = true) {
+        globalPanelsVisible = Boolean(visible);
+        document.body.classList.toggle('global-panels-hidden', !globalPanelsVisible);
+        const button = document.querySelector('.imgedit-panel-toggle');
+        if (button) {
+            const label = globalPanelsVisible ? '隐藏参数栏和缩略图' : '显示参数栏和缩略图';
+            button.setAttribute('aria-pressed', String(globalPanelsVisible));
+            button.setAttribute('aria-label', label);
+            button.title = label;
+        }
+        if (notifyRoomspace) postRoomspacePanelVisibility(globalPanelsVisible);
+    }
+    function toggleGlobalPanels() {
+        setGlobalPanelsVisible(!globalPanelsVisible);
     }
     function toggleExpertSettings() {
         const settings = document.getElementById('expert-model-settings');
@@ -4151,7 +4180,10 @@
         } else if (data.type === 'roomspace-ready') {
             if (event.source) {
                 event.source.postMessage({ type: 'roomspace-theme', theme: currentTheme }, '*');
+                event.source.postMessage({ type: 'roomspace-panel-visibility', visible: globalPanelsVisible }, '*');
             }
+        } else if (data.type === 'roomspace-panel-visibility') {
+            setGlobalPanelsVisible(Boolean(data.visible), false);
         }
     });
     function showHelp() {
@@ -4237,6 +4269,7 @@
     window.focusImageAdjust = focusImageAdjust;
     window.focusRoomspace = focusRoomspace;
     window.toggleTheme = toggleTheme;
+    window.toggleGlobalPanels = toggleGlobalPanels;
     window.toggleExpertSettings = toggleExpertSettings;
     window.showHelp = showHelp;
     window.openImageFile = openImageFile;
