@@ -30,6 +30,7 @@ from image_edit import (
     blend_confidence,
     align_generated_to_source,
     decode_selection_mask,
+    confidence_patch_layer,
     OutputSizeMismatch,
     image_model_capability,
     load_image_model_config,
@@ -261,6 +262,40 @@ class ImageEditorAPI:
             )
         except Exception as exc:
             logger.exception("patch failed id=%s", request_id)
+            return json.dumps({"error": str(exc), "requestId": request_id}, ensure_ascii=False)
+
+    def create_mask_patch_image_data(self, base_image, source_layer_image, selection_mask):
+        """Fuse a positioned source layer into the base only inside an editable mask."""
+        request_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "mask patch start id=%s base=%s source=%s mask=%s",
+            request_id,
+            len(str(base_image or "")),
+            len(str(source_layer_image or "")),
+            len(str(selection_mask or "")),
+        )
+        try:
+            decode = lambda value, mode: Image.open(
+                io.BytesIO(base64.b64decode(str(value).split(",", 1)[-1]))
+            ).convert(mode)
+            base = decode(base_image, "RGB")
+            source = decode(source_layer_image, "RGBA").resize(base.size, Image.Resampling.LANCZOS)
+            patch, alignment = confidence_patch_layer(base, source, selection_mask)
+            return json.dumps(
+                {
+                    "imageData": _data_url(patch),
+                    "width": patch.width,
+                    "height": patch.height,
+                    "blendMethod": "confidence",
+                    "blendLabel": "置信度补丁",
+                    "alignmentMoved": bool(alignment.get("moved")),
+                    "alignmentDx": int(alignment.get("dx", 0)),
+                    "alignmentDy": int(alignment.get("dy", 0)),
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            logger.exception("mask patch failed id=%s", request_id)
             return json.dumps({"error": str(exc), "requestId": request_id}, ensure_ascii=False)
 
     def debug_log(self, event, details=None):

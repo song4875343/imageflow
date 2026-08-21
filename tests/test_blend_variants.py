@@ -70,7 +70,7 @@ class BlendVariantTests(unittest.TestCase):
         self.assertEqual(3, len({item[3] for item in results}))
         self.assertTrue(all(item[4] == 1 for item in results))
 
-    def test_masked_full_image_generation_returns_direct_and_confidence_variants(self):
+    def test_masked_full_image_generation_returns_unaligned_aligned_and_confidence_variants(self):
         base, generated, mask = sample_images()
         with patch.object(image_edit, "edit_patch", return_value=[generated]):
             results = image_edit.generate_correction_overlay(
@@ -82,8 +82,11 @@ class BlendVariantTests(unittest.TestCase):
                 full_image_edit=True,
             )
 
-        self.assertEqual(2, len(results))
-        self.assertEqual(["full_original", "confidence"], [item[2] for item in results])
+        self.assertEqual(3, len(results))
+        self.assertEqual(
+            ["full_original", "pre_alignment", "confidence"],
+            [item[2] for item in results],
+        )
         self.assertTrue(all(item[5] for item in results))
 
     def test_alignment_uses_protected_pixels_to_remove_small_translation(self):
@@ -126,7 +129,8 @@ class BlendVariantTests(unittest.TestCase):
                 full_image_edit=True,
             )
 
-        direct = np.asarray(results[0][0].convert("RGB"))
+        aligned_result = next(item[0] for item in results if item[2] == "full_original")
+        direct = np.asarray(aligned_result.convert("RGB"))
         error = np.abs(direct.astype(np.int16) - source_array.astype(np.int16))
         self.assertLessEqual(float(np.median(error[mask_array == 0])), 2.0)
 
@@ -149,6 +153,29 @@ class BlendVariantTests(unittest.TestCase):
         )
         error = np.abs(np.asarray(result).astype(np.int16) - source_array.astype(np.int16))
         self.assertLessEqual(float(np.median(error[mask_array == 0])), 2.0)
+
+    def test_confidence_patch_layer_is_limited_by_mask_and_source_alpha(self):
+        base, _, mask = sample_images()
+        source = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        source.paste((230, 45, 80, 255), (20, 20, 55, 55))
+
+        result, _ = image_edit.confidence_patch_layer(base, source, mask)
+
+        alpha = np.asarray(result.getchannel("A"))
+        effective = np.minimum(
+            np.asarray(mask),
+            np.asarray(source.getchannel("A")),
+        )
+        self.assertIsNotNone(result.getbbox())
+        self.assertTrue(np.all(alpha[effective == 0] == 0))
+
+    def test_confidence_patch_layer_rejects_non_overlapping_source(self):
+        base, _, mask = sample_images()
+        source = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        source.paste((230, 45, 80, 255), (0, 0, 12, 12))
+
+        with self.assertRaisesRegex(ValueError, "没有重叠区域"):
+            image_edit.confidence_patch_layer(base, source, mask)
 
 
 if __name__ == "__main__":

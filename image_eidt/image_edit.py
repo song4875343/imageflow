@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import requests
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 INPUT_FOLDER = "img_input"
@@ -620,6 +620,36 @@ def composite_aligned_selection_result(
         selection_mask=mask,
     )
     return (result, alignment) if return_info else result
+
+
+def confidence_patch_layer(base, source_layer, selection_mask, pixels=FEATHER_PIXELS):
+    """Return a transparent confidence-fused patch from a positioned source layer."""
+    base_image = base.convert("RGB")
+    source_image = source_layer.convert("RGBA")
+    if source_image.size != base_image.size:
+        source_image = source_image.resize(base_image.size, Image.Resampling.LANCZOS)
+    mask = decode_selection_mask(selection_mask, base_image.size)
+    if mask is None:
+        raise ValueError("蒙版为空")
+    effective_mask = ImageChops.multiply(mask, source_image.getchannel("A"))
+    if effective_mask.getbbox() is None:
+        raise ValueError("取图源与蒙版没有重叠区域")
+    candidate = Image.composite(
+        source_image.convert("RGB"), base_image, source_image.getchannel("A")
+    )
+    aligned, alignment = align_generated_to_source(
+        base_image, candidate, effective_mask, return_info=True
+    )
+    corrected = blend_confidence(
+        base_image,
+        aligned,
+        (0, 0, base_image.width, base_image.height),
+        pixels=max(1, int(pixels)),
+        selection_mask=effective_mask,
+    )
+    patch = correction_layer(base_image, corrected)
+    patch.putalpha(ImageChops.multiply(patch.getchannel("A"), effective_mask))
+    return patch, alignment
 
 
 def gpt_edit_mask(image, editable_box=None, editable_mask=None):
@@ -1488,8 +1518,9 @@ def generate_correction_overlay(
 
     Local edits return one item per blend pipeline as
     ``(overlay, box, method, label, source_index, comparison, alignment)``. A full-image
-    edit with a mask returns the original full result plus a confidence
-    composite; an unmasked full-image edit keeps the direct result only.
+    edit with a mask returns the aligned full result, the unaligned full
+    result, and a confidence composite; an unmasked full-image edit keeps the
+    direct result only.
     """
     page = page_image.convert("RGB")
     x1, y1, x2, y2 = _clamp_box(target_box, page.width, page.height)
@@ -1534,7 +1565,21 @@ def generate_correction_overlay(
                     aligned_generated.convert("RGBA"),
                     full_box,
                     "full_original",
-                    "整图生成",
+                    "对位后整图",
+                    index,
+                    True,
+                    alignment,
+                )
+            )
+            # Keep the raw model output available for comparison. The aligned
+            # result is useful for judging registration, while the confidence
+            # layer is the compositing result used on the canvas.
+            results.append(
+                (
+                    generated.convert("RGBA"),
+                    full_box,
+                    "pre_alignment",
+                    "未对齐生成图",
                     index,
                     True,
                     alignment,

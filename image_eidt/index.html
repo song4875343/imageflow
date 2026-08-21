@@ -67,6 +67,9 @@
         .size-option.is-disabled { opacity:.38; pointer-events:none; }
         #canvas-wrapper { position:relative; flex:1; min-width:0; min-height:0; overflow:hidden; background:#26282b; }
         #canvas-stage { position:absolute; inset:0; background:#524f4f; display:flex; justify-content:center; align-items:center; overflow:hidden; }
+        #mask-edit-overlay { position:absolute; display:none; pointer-events:none; z-index:4; }
+        #mask-edit-overlay.is-visible { display:block; opacity:.72; }
+        #mask-edit-overlay.is-brush-active { pointer-events:auto; cursor:crosshair; }
         #generation-preview { position:absolute; left:332px; right:20px; bottom:20px; height:12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border:1px solid #3a3d41; border-radius:12px; background:linear-gradient(180deg,rgba(32,34,37,.94),rgba(23,25,27,.94)); box-shadow:0 10px 30px rgba(0,0,0,.35); backdrop-filter:blur(14px); z-index:20; }
         .preview-heading { width:68px; flex:0 0 68px; display:flex; flex-direction:column; justify-content:center; color:#d8dde3; font-size:12px; letter-spacing:.08em; }
         .preview-heading small { margin-top:5px; color:#737b84; letter-spacing:0; }
@@ -76,6 +79,7 @@
         .generation-preview-empty { color:#656b72; font-size:12px; }
         .generation-card { position:relative; flex:0 0 auto; height:calc(100% - 4px); aspect-ratio:1.35; overflow:hidden; border:1px solid #454b52; border-radius:7px; background:#111; box-shadow:0 4px 12px rgba(0,0,0,.28); cursor:pointer; }
         .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
+        .generation-card.source-candidate { border-color:#00d394; box-shadow:0 0 0 2px rgba(0,211,148,.28),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
         .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
         .generation-eye, .generation-compare-toggle, .generation-fine-tune { position:absolute; right:4px; width:20px; height:20px; min-height:20px; display:grid; place-items:center; box-sizing:border-box; padding:0; border:1px solid rgba(255,255,255,.42); border-radius:4px; color:#fff; background:rgba(12,14,16,.82); box-shadow:0 2px 6px rgba(0,0,0,.35); cursor:pointer; line-height:1; }
@@ -109,12 +113,16 @@
         .annotation-colors { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; }
         .annotation-color { width:28px; min-width:28px; height:28px !important; min-height:28px !important; aspect-ratio:1; flex:0 0 28px; padding:0; border:3px solid transparent; border-radius:50%; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.12); }
         .annotation-color.is-active { border-color:#d9dde1; transform:scale(1.12); }
-        .layer-actions { display:flex; align-items:center; justify-content:center; gap:7px; }
+        .layer-actions { display:flex; align-items:center; justify-content:center; gap:7px; flex-wrap:wrap; }
         .layer-action { min-width:60px; height:32px; padding:0 9px; box-sizing:border-box; border:1px solid #555; border-radius:7px; color:#e5e7eb; background:#34363a; cursor:pointer; font-size:11px; }
         .layer-action:hover { border-color:#6aafda; background:#3d4248; }
         .layer-action.danger:hover { border-color:#d65f5f; background:#512d2d; }
         .layer-action.is-active { border-color:#0e639c; background:#0e639c; color:#fff; }
         .annotation-action { display:flex; align-items:center; gap:5px; }
+        .preview-brush-size-row { display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.12); color:#cbd2d9; font-size:11px; }
+        .preview-brush-size-row[hidden] { display:none; }
+        .preview-brush-size-row label { min-width:58px; }
+        .preview-brush-size-row input { width:150px; accent-color:#4aa3df; }
         .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
         .save-choice-overlay[hidden] { display:none; }
         .save-choice-panel { width:330px; max-width:calc(100% - 32px); padding:18px; box-sizing:border-box; border:1px solid #555b62; border-radius:12px; background:#292b2f; box-shadow:0 18px 55px rgba(0,0,0,.55); color:#e6e9ed; }
@@ -536,6 +544,7 @@
 <div id="canvas-wrapper">
     <div id="canvas-stage">
         <canvas id="c"></canvas>
+        <canvas id="mask-edit-overlay" aria-hidden="true"></canvas>
         <div id="page-nav">
             <button onclick="changePage(-1)" title="上一页">◀</button>
             <span id="page-info">1 / 1</span>
@@ -556,9 +565,16 @@
             <button class="layer-action danger" onclick="deleteSelectedPreviewLayer()">删除</button>
             <button class="layer-action" onclick="setSelectedLayerAsMain()">置为主图</button>
             <button id="annotation-brush-button" class="layer-action annotation-action" onclick="startAnnotationBrush()">✎ 画笔</button>
+            <button id="mask-paint-button" class="layer-action annotation-action" hidden onclick="startMaskBrush('add')">＋ 涂抹</button>
+            <button id="mask-erase-button" class="layer-action annotation-action" hidden onclick="startMaskBrush('subtract')">− 橡皮擦</button>
+            <button id="mask-patch-button" class="layer-action annotation-action" hidden onclick="startMaskPatchSourceSelection()">▣ 生成补丁</button>
             <button id="annotation-text-button" class="layer-action annotation-action" onclick="addAnnotationText()">T 文字</button>
             <button id="annotation-marker-button" class="layer-action annotation-action" onclick="toggleAnnotationMarker()">● 标记</button>
             <button class="layer-action" onclick="openSaveChoiceDialog()">保存</button>
+        </div>
+        <div id="preview-brush-size-row" class="preview-brush-size-row" hidden>
+            <label for="preview-brush-size">线宽 <span id="preview-brush-size-value">8</span> px</label>
+            <input id="preview-brush-size" type="range" min="1" max="160" value="8" oninput="updatePreviewBrushSize(this.value)">
         </div>
     </div>
     <div id="save-choice-dialog" class="save-choice-overlay" hidden onclick="handleSaveChoiceBackdrop(event)">
@@ -618,6 +634,7 @@
     let expertGuide = null;
     let expertRectGuides = [];
     let expertBrushPaths = [];
+    let expertSubtractPaths = [];
     let expertSelectionActive = false;
     let expertGeneratingGuides = [];
     let expertBusy = false;
@@ -627,10 +644,24 @@
     const expertReferenceImages = [];
     const generationPreviewObjects = new Map();
     const expandedBlendGroups = new Set();
+    const imageAssetSources = new Map();
     let selectedPreviewId = null;
     let fineTunePreviewId = null;
+    let suppressPreviewCardSync = false;
     let annotationColor = '#ff5252';
     let annotationMode = null;
+    let maskBrushMode = null;
+    let maskOverlayCanvas = null;
+    let maskOverlayContext = null;
+    let maskOverlayGuideStates = new Map();
+    let maskOverlayActive = false;
+    let maskOverlayData = null;
+    let maskOverlayStrokeActive = false;
+    let maskOverlayLastPoint = null;
+    let maskOverlayEventsBound = false;
+    let maskPatchSelection = null;
+    let maskPatchBusy = false;
+    let previewBrushSize = 8;
     let sizeMismatchResolver = null;
     let annotationMarkerNumber = 1;
     const annotationPreviewId = 'annotation-layer';
@@ -773,30 +804,387 @@
         return (entry?.objects || []).filter(object => object?.canvas === canvas);
     }
 
-    function resetGenerationPreviews() {
+    function imageSourceForObject(object) {
+        if (!object || object.type !== 'image') return null;
+        try {
+            return object.getSrc?.() || object._element?.currentSrc || object._element?.src || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function imageAssetKey(object, index=0) {
+        object.data = object.data || {};
+        if (!object.data.assetId) {
+            const identity = object.data.previewId || object.data.id || `image-${index}`;
+            object.data.assetId = `history:${currentPageGlobal}:${identity}`;
+        }
+        return String(object.data.assetId);
+    }
+
+    function rememberImageAsset(object, source=null, index=0) {
+        if (!object || object.type !== 'image') return null;
+        const resolvedSource = source || imageSourceForObject(object);
+        if (!resolvedSource) return null;
+        const key = imageAssetKey(object, index);
+        imageAssetSources.set(key, resolvedSource);
+        return resolvedSource;
+    }
+
+    function setPreviewThumbnail(entry, imageData) {
+        const source = String(imageData || '');
+        entry.sourceImageData = source;
+        if (!source) {
+            entry.thumbnail.removeAttribute('src');
+            return;
+        }
+        // Keep the card immediately usable. The reduced preview is an async
+        // enhancement and must never leave the card blank while decoding.
+        entry.thumbnail.src = source;
+        if (source.length <= 120000) {
+            return;
+        }
+        const previewImage = new Image();
+        previewImage.onload = () => {
+            if (entry.sourceImageData !== source || !entry.thumbnail.isConnected) return;
+            const longestEdge = Math.max(previewImage.naturalWidth || 1, previewImage.naturalHeight || 1);
+            const scale = Math.min(1, 256 / longestEdge);
+            const previewCanvas = document.createElement('canvas');
+            previewCanvas.width = Math.max(1, Math.round((previewImage.naturalWidth || 1) * scale));
+            previewCanvas.height = Math.max(1, Math.round((previewImage.naturalHeight || 1) * scale));
+            const context = previewCanvas.getContext('2d', {alpha:true});
+            if (!context) { entry.thumbnail.src = source; return; }
+            context.drawImage(previewImage, 0, 0, previewCanvas.width, previewCanvas.height);
+            entry.thumbnail.src = previewCanvas.toDataURL('image/webp', 0.78);
+            previewCanvas.width = 1;
+            previewCanvas.height = 1;
+        };
+        previewImage.onerror = () => {
+            if (entry.sourceImageData === source && entry.thumbnail.isConnected) entry.thumbnail.src = source;
+        };
+        previewImage.src = source;
+    }
+
+    function clearGenerationPreviewCards() {
+        generationPreviewObjects.forEach(entry => {
+            entry.thumbnail?.removeAttribute('src');
+            entry.sourceImageData = '';
+            if (entry.sourceKey) imageAssetSources.delete(entry.sourceKey);
+        });
         generationPreviewObjects.clear();
-        expandedBlendGroups.clear();
-        selectedPreviewId = null;
-        fineTunePreviewId = null;
-        annotationMode = null;
-        annotationMarkerNumber = 1;
-        updateAnnotationMarkerButton();
-        const toolbar = document.getElementById('preview-selection-toolbar');
-        if (toolbar) toolbar.hidden = true;
         const items = document.getElementById('generation-preview-items');
         if (items) items.innerHTML = '<span class="generation-preview-empty">打开图片后，主图和生成图层会出现在这里</span>';
     }
 
+    function resetGenerationPreviews() {
+        hideMaskOverlay();
+        maskOverlayData = null;
+        clearGenerationPreviewCards();
+        expandedBlendGroups.clear();
+        selectedPreviewId = null;
+        fineTunePreviewId = null;
+        annotationMode = null;
+        maskBrushMode = null;
+        maskPatchSelection = null;
+        maskPatchBusy = false;
+        annotationMarkerNumber = 1;
+        updateAnnotationMarkerButton();
+        updatePreviewToolbar();
+        const toolbar = document.getElementById('preview-selection-toolbar');
+        if (toolbar) toolbar.hidden = true;
+    }
+
+    function selectedPreviewEntry() {
+        return resolveLivePreviewEntry(selectedPreviewId);
+    }
+
+    function updatePreviewBrushSize(value) {
+        previewBrushSize = Math.max(1, Math.min(160, Number(value) || 8));
+        const input = document.getElementById('preview-brush-size');
+        const label = document.getElementById('preview-brush-size-value');
+        if (input && Number(input.value) !== previewBrushSize) input.value = String(previewBrushSize);
+        if (label) label.innerText = Math.round(previewBrushSize);
+        if (canvas?.freeDrawingBrush && (annotationMode === 'brush' || maskBrushMode)) canvas.freeDrawingBrush.width = previewBrushSize;
+    }
+
+    function updatePreviewToolbar() {
+        const entry = selectedPreviewEntry();
+        const isMask = Boolean(entry?.isSelectionMask);
+        const isBrush = annotationMode === 'brush' || Boolean(maskBrushMode);
+        document.getElementById('mask-paint-button')?.toggleAttribute('hidden', !isMask);
+        document.getElementById('mask-erase-button')?.toggleAttribute('hidden', !isMask);
+        document.getElementById('mask-patch-button')?.toggleAttribute('hidden', !isMask);
+        document.getElementById('mask-paint-button')?.classList.toggle('is-active', maskBrushMode === 'add');
+        document.getElementById('mask-erase-button')?.classList.toggle('is-active', maskBrushMode === 'subtract');
+        document.getElementById('mask-patch-button')?.classList.toggle('is-active', Boolean(maskPatchSelection));
+        const sizeRow = document.getElementById('preview-brush-size-row');
+        if (sizeRow) sizeRow.hidden = !isBrush;
+        document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
+    }
+
+    function maskOverlayObjects() {
+        return expertSelectionGuides().filter(object => object?.canvas);
+    }
+
+    function persistedMaskOverlayData() {
+        return expertSelectionGuides()
+            .map(guide => guide.data?.maskOverlayData)
+            .find(Boolean) || null;
+    }
+
+    function updateMaskOverlayTransform() {
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay || !canvas?.originalWidth || !canvas?.originalHeight) return;
+        const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+        overlay.style.left = `${vpt[4]}px`;
+        overlay.style.top = `${vpt[5]}px`;
+        overlay.style.width = `${canvas.originalWidth * vpt[0]}px`;
+        overlay.style.height = `${canvas.originalHeight * vpt[3]}px`;
+    }
+
+    function ensureMaskOverlayCanvas() {
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay || !canvas?.originalWidth || !canvas?.originalHeight) return null;
+        if (overlay.width !== canvas.originalWidth || overlay.height !== canvas.originalHeight) {
+            overlay.width = canvas.originalWidth;
+            overlay.height = canvas.originalHeight;
+        }
+        maskOverlayCanvas = overlay;
+        maskOverlayContext = overlay.getContext('2d');
+        updateMaskOverlayTransform();
+        return maskOverlayContext;
+    }
+
+    function tintMaskOverlay() {
+        const context = ensureMaskOverlayCanvas();
+        if (!context) return;
+        const imageData = context.getImageData(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+        const pixels = imageData.data;
+        for (let index = 0; index < pixels.length; index += 4) {
+            const alpha = pixels[index + 3];
+            pixels[index] = 74;
+            pixels[index + 1] = 163;
+            pixels[index + 2] = 223;
+            pixels[index + 3] = alpha;
+        }
+        context.putImageData(imageData, 0, 0);
+    }
+
+    function hideMaskOverlay() {
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (overlay) overlay.classList.remove('is-visible', 'is-brush-active');
+        maskOverlayActive = false;
+        maskOverlayStrokeActive = false;
+        maskOverlayLastPoint = null;
+        maskOverlayGuideStates.forEach((visible, object) => { if (object?.canvas) object.visible = visible; });
+        maskOverlayGuideStates.clear();
+        canvas?.requestRenderAll();
+    }
+
+    function showMaskOverlay(maskData) {
+        const context = ensureMaskOverlayCanvas();
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!context || !overlay) return false;
+        maskOverlayData = maskData || persistedMaskOverlayData() || maskOverlayData || null;
+        if (!maskOverlayActive) {
+            maskOverlayGuideStates = new Map(maskOverlayObjects().map(object => [object, object.visible]));
+            maskOverlayObjects().forEach(object => { object.visible = false; });
+        }
+        context.clearRect(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+        const image = new Image();
+        image.onload = () => {
+            context.clearRect(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+            context.drawImage(image, 0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+            tintMaskOverlay();
+            overlay.classList.add('is-visible');
+            maskOverlayActive = true;
+            updateMaskOverlayTransform();
+            canvas?.requestRenderAll();
+        };
+        image.onerror = () => {
+            maskOverlayGuideStates.forEach((visible, object) => { if (object?.canvas) object.visible = visible; });
+            maskOverlayGuideStates.clear();
+        };
+        image.src = maskData || exportExpertSelectionMask()?.maskData || '';
+        return true;
+    }
+
+    function drawMaskPathOnOverlay(path, mode) {
+        const context = ensureMaskOverlayCanvas();
+        if (!context || !path) return;
+        const subtract = mode === 'subtract';
+        context.save();
+        context.globalCompositeOperation = subtract ? 'destination-out' : 'source-over';
+        path.set({stroke:subtract ? '#000000' : '#4aa3df', opacity:1});
+        path.render(context);
+        context.restore();
+        const overlay = document.getElementById('mask-edit-overlay');
+        overlay?.classList.add('is-visible');
+        maskOverlayActive = true;
+        updateMaskOverlayTransform();
+    }
+
+    function exportMaskOverlayData() {
+        if (maskOverlayActive && maskOverlayCanvas) {
+            maskOverlayData = maskOverlayCanvas.toDataURL('image/png');
+        }
+        return maskOverlayData;
+    }
+
+    function persistMaskOverlayData() {
+        const data = exportMaskOverlayData();
+        if (!data) return;
+        expertSelectionGuides().forEach(guide => {
+            guide.data = guide.data || {};
+            guide.data.maskOverlayData = data;
+        });
+    }
+
+    function maskOverlayPoint(event) {
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay || !maskOverlayCanvas) return null;
+        const rect = overlay.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            x: Math.max(0, Math.min(maskOverlayCanvas.width, (event.clientX - rect.left) * maskOverlayCanvas.width / rect.width)),
+            y: Math.max(0, Math.min(maskOverlayCanvas.height, (event.clientY - rect.top) * maskOverlayCanvas.height / rect.height)),
+        };
+    }
+
+    function drawMaskOverlaySegment(from, to) {
+        const context = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!context || !from || !to) return;
+        const subtract = maskBrushMode === 'subtract';
+        context.save();
+        context.globalCompositeOperation = subtract ? 'destination-out' : 'source-over';
+        context.strokeStyle = subtract ? '#000000' : '#4aa3df';
+        context.globalAlpha = 1;
+        context.lineWidth = previewBrushSize;
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.beginPath();
+        context.moveTo(from.x, from.y);
+        context.lineTo(to.x, to.y);
+        context.stroke();
+        context.restore();
+        document.getElementById('mask-edit-overlay')?.classList.add('is-visible');
+    }
+
+    function finishMaskOverlayStroke() {
+        if (!maskOverlayStrokeActive) return;
+        maskOverlayStrokeActive = false;
+        maskOverlayLastPoint = null;
+        try { document.getElementById('mask-edit-overlay')?.releasePointerCapture?.(maskOverlayPointerId); } catch (error) { /* no-op */ }
+        refreshExpertSelectionPreview();
+        updateExpertSelectionControls();
+        syncGenerationPreviewVisibility();
+        canvas?.requestRenderAll();
+        persistMaskOverlayData();
+        queueHistoryForPage(currentPageGlobal);
+    }
+
+    let maskOverlayPointerId = null;
+
+    function bindMaskOverlayEvents() {
+        if (maskOverlayEventsBound) return;
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay) return;
+        maskOverlayEventsBound = true;
+        overlay.addEventListener('pointerdown', event => {
+            if (!maskBrushMode || !maskOverlayActive) return;
+            event.preventDefault();
+            maskOverlayPointerId = event.pointerId;
+            overlay.setPointerCapture?.(event.pointerId);
+            maskOverlayStrokeActive = true;
+            maskOverlayLastPoint = maskOverlayPoint(event);
+            drawMaskOverlaySegment(maskOverlayLastPoint, maskOverlayLastPoint);
+        });
+        overlay.addEventListener('pointermove', event => {
+            if (!maskOverlayStrokeActive || event.pointerId !== maskOverlayPointerId) return;
+            event.preventDefault();
+            const point = maskOverlayPoint(event);
+            drawMaskOverlaySegment(maskOverlayLastPoint, point);
+            maskOverlayLastPoint = point;
+        });
+        overlay.addEventListener('pointerup', event => {
+            if (event.pointerId === maskOverlayPointerId) finishMaskOverlayStroke();
+        });
+        overlay.addEventListener('pointercancel', event => {
+            if (event.pointerId === maskOverlayPointerId) finishMaskOverlayStroke();
+        });
+        overlay.addEventListener('lostpointercapture', () => finishMaskOverlayStroke());
+    }
+
+    function previewLabelFromObjects(previewId, objects) {
+        const data = objects.find(object => object.data)?.data || {};
+        if (data.previewLabel) return data.previewLabel;
+        if (data.isMain || data.type === 'main-image') return `主图 ${canvas.originalWidth}x${canvas.originalHeight}`;
+        if (data.isSelectionMask) return `编辑蒙版 ${canvas.originalWidth}x${canvas.originalHeight}`;
+        if (data.isAnnotation) return '标记图层';
+        if (data.blendLabel) return data.blendLabel;
+        return data.isFullImage ? '整图预览' : '局部图层预览';
+    }
+
+    function rebuildGenerationPreviewsFromCanvas() {
+        if (!canvas || suppressPreviewCardSync) return;
+        const previousSelectedId = selectedPreviewId;
+        const groups = new Map();
+        canvas.getObjects().forEach(object => {
+            const previewId = object.data?.previewId;
+            if (!previewId) return;
+            if (!groups.has(previewId)) groups.set(previewId, []);
+            groups.get(previewId).push(object);
+        });
+        clearGenerationPreviewCards();
+        groups.forEach((objects, previewId) => {
+            const data = objects.find(object => object.data)?.data || {};
+            let source = objects.map(object => rememberImageAsset(object)).find(Boolean) || null;
+            if (!source && previewId === annotationPreviewId) source = exportAnnotationLayerImage();
+            if (!source && previewId === 'expert-selection-mask') source = exportExpertSelectionMask()?.maskData || null;
+            if (!source) return;
+            const first = objects[0];
+            const width = Math.max(1, Math.round(first.getScaledWidth?.() || first.width || canvas.originalWidth));
+            const height = Math.max(1, Math.round(first.getScaledHeight?.() || first.height || canvas.originalHeight));
+            addGenerationPreview(
+                {id:previewId,imageData:source,overlay:{x:first.left || 0,y:first.top || 0,w:width,h:height},blendMethod:data.blendMethod,blendLabel:data.blendLabel},
+                objects,
+                Boolean(data.isFullImage || data.isMain || data.type === 'main-image'),
+                {
+                    previewId,
+                    label:previewLabelFromObjects(previewId, objects),
+                    blendGroup:data.blendGroup || null,
+                    isMain:Boolean(data.isMain || data.type === 'main-image'),
+                    isAnnotation:Boolean(data.isAnnotation || previewId === annotationPreviewId),
+                    isSelectionMask:Boolean(data.isSelectionMask || previewId === 'expert-selection-mask'),
+                    isPatch:Boolean(data.isPatch),
+                }
+            );
+        });
+        selectedPreviewId = generationPreviewObjects.has(previousSelectedId) ? previousSelectedId : null;
+        fineTunePreviewId = generationPreviewObjects.has(fineTunePreviewId) ? fineTunePreviewId : null;
+        document.getElementById('preview-selection-toolbar').hidden = !selectedPreviewId;
+        syncGenerationPreviewVisibility();
+        updatePreviewToolbar();
+    }
+
     function syncGenerationPreviewVisibility() {
+        const blendGroups = new Map();
+        generationPreviewObjects.forEach(entry => {
+            if (!entry.blendGroup) return;
+            if (!blendGroups.has(entry.blendGroup)) blendGroups.set(entry.blendGroup, []);
+            blendGroups.get(entry.blendGroup).push(entry);
+        });
         generationPreviewObjects.forEach(entry => {
             const objects = previewEntryObjects(entry);
-            const visible = objects.length > 0 && objects.every(object => object.visible);
+            const visible = entry.isSelectionMask && maskOverlayActive
+                ? Boolean(document.getElementById('mask-edit-overlay')?.classList.contains('is-visible'))
+                : objects.length > 0 && objects.every(object => object.visible);
             entry.button.classList.toggle('is-hidden', !visible);
             entry.button.innerText = visible ? '👁' : '◌';
             entry.button.title = visible ? '隐藏此图层' : '显示此图层';
             entry.button.setAttribute('aria-label', entry.button.title);
             if (entry.compareButton) {
-                const groupEntries = [...generationPreviewObjects.values()].filter(item => item.blendGroup === entry.blendGroup);
+                const groupEntries = blendGroups.get(entry.blendGroup) || [];
                 const expanded = expandedBlendGroups.has(entry.blendGroup);
                 entry.compareButton.innerText = expanded ? '−' : '+';
                 entry.compareButton.title = expanded ? '收起融合对比' : '展开融合对比';
@@ -807,9 +1195,10 @@
             }
             if (entry.fineTuneButton) {
                 const active = fineTunePreviewId === entry.previewId;
+                entry.fineTuneButton.hidden = Boolean(entry.isMain);
                 entry.fineTuneButton.classList.toggle('is-active', active);
                 entry.fineTuneButton.innerText = active ? '✓' : '↕';
-                entry.fineTuneButton.title = active ? '退出微调' : '微调补丁位置';
+                entry.fineTuneButton.title = active ? '退出微调' : '微调图层位置';
                 entry.fineTuneButton.setAttribute('aria-label', entry.fineTuneButton.title);
             }
             entry.card.classList.toggle('is-main', Boolean(entry.isMain));
@@ -826,28 +1215,67 @@
         syncGenerationPreviewVisibility();
     }
 
+    function resolveLivePreviewEntry(previewId) {
+        let entry = generationPreviewObjects.get(previewId);
+        if (entry && !previewEntryObjects(entry).length) {
+            rebuildGenerationPreviewsFromCanvas();
+            entry = generationPreviewObjects.get(previewId);
+        }
+        return entry;
+    }
+
     function toggleGenerationPreview(previewId) {
-        const entry = generationPreviewObjects.get(previewId);
+        const entry = resolveLivePreviewEntry(previewId);
         const objects = previewEntryObjects(entry);
         if (!objects.length) return;
+        if (entry.isSelectionMask && maskOverlayActive) {
+            const overlay = document.getElementById('mask-edit-overlay');
+            const shouldShow = !overlay?.classList.contains('is-visible');
+            overlay?.classList.toggle('is-visible', shouldShow);
+            syncGenerationPreviewVisibility();
+            canvas.requestRenderAll();
+            return;
+        }
         const shouldShow = !objects.every(object => object.visible);
         objects.forEach(object => {
+            object.data = object.data || {};
             object.data.previewVisible = shouldShow;
             object.set('visible', shouldShow);
         });
         syncGenerationPreviewVisibility();
         canvas.requestRenderAll();
+        queueHistoryForPage(currentPageGlobal);
     }
 
     function selectGenerationPreview(previewId) {
+        if (maskPatchSelection && previewId !== maskPatchSelection.maskPreviewId) {
+            const sourceEntry = resolveLivePreviewEntry(previewId);
+            const sourceObjects = previewEntryObjects(sourceEntry);
+            const isImageSource = sourceObjects.length === 1 && sourceObjects[0].type === 'image';
+            if (!sourceEntry || sourceEntry.isMain || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
+                setExpertStatus('取图源必须是主图之外的单张图片缩略图', '#f48771');
+                return;
+            }
+            generateMaskPatchFromSource(previewId);
+            return;
+        }
         stopAnnotationMode();
+        stopMaskBrush();
         if (fineTunePreviewId && fineTunePreviewId !== previewId) fineTunePreviewId = null;
-        const entry = generationPreviewObjects.get(previewId);
+        const entry = resolveLivePreviewEntry(previewId);
         const objects = previewEntryObjects(entry);
         if (!entry || !objects.length) return;
+        if (entry.isSelectionMask) {
+            showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || entry.sourceImageData || null);
+        } else {
+            hideMaskOverlay();
+        }
         selectedPreviewId = previewId;
         canvas.discardActiveObject();
-        if (objects.length === 1) {
+        if (entry.isSelectionMask) {
+            // The visible mask is rendered by the isolated overlay; keep its
+            // hidden guide objects out of Fabric's active selection box.
+        } else if (objects.length === 1) {
             objects[0].set({selectable:true,evented:true});
             canvas.setActiveObject(objects[0]);
         } else {
@@ -856,23 +1284,25 @@
         }
         document.getElementById('preview-selection-toolbar').hidden = false;
         syncGenerationPreviewVisibility();
+        updatePreviewToolbar();
         canvas.requestRenderAll();
     }
 
     function toggleFineTune(previewId) {
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
-        if (!entry?.isPatch || objects.length !== 1) return;
+        if (!entry || entry.isMain || !objects.length) return;
+        if (maskPatchSelection) clearMaskPatchSourceSelection();
         if (fineTunePreviewId === previewId) {
             fineTunePreviewId = null;
             syncGenerationPreviewVisibility();
-            setExpertStatus('已退出补丁微调', '#dcdcaa');
+            setExpertStatus('已退出图层微调', '#dcdcaa');
             return;
         }
         selectGenerationPreview(previewId);
         fineTunePreviewId = previewId;
         syncGenerationPreviewVisibility();
-        setExpertStatus('补丁微调已开启：使用方向键每次移动 1 像素', '#dcdcaa');
+        setExpertStatus('图层微调已开启：使用方向键每次移动 1 像素', '#dcdcaa');
     }
 
     function isPatchResult(result, options={}) {
@@ -889,27 +1319,63 @@
         const items = document.getElementById('generation-preview-items');
         items.querySelector('.generation-preview-empty')?.remove();
         const previewId = options.previewId || `preview-${result.id || Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const label = options.label || (isFullImage ? `整图 ${result.overlay?.w || canvas.originalWidth}×${result.overlay?.h || canvas.originalHeight}` : '局部蒙版');
+        const previewSource = String(result.imageData || options.imageData || '');
+        const previewSourceKey = options.sourceKey || `preview:${currentPageGlobal}:${previewId}`;
+        if (previewSource) imageAssetSources.set(previewSourceKey, previewSource);
         const existing = generationPreviewObjects.get(previewId);
         if (existing) {
             existing.objects = objects;
-            existing.thumbnail.src = result.imageData;
-            existing.kind.innerText = options.label || existing.kind.innerText;
+            existing.isFullImage = Boolean(isFullImage || existing.isFullImage);
+            existing.kind.innerText = label || existing.kind.innerText;
             existing.isSelectionMask = Boolean(options.isSelectionMask || existing.isSelectionMask);
-            objects.forEach(object => { object.data.previewId = previewId; });
+            existing.isAnnotation = Boolean(options.isAnnotation || existing.isAnnotation);
+            existing.isMain = Boolean(options.isMain || existing.isMain);
+            existing.isPatch = Boolean(options.isPatch || existing.isPatch || isPatch);
+            existing.blendGroup = options.blendGroup || existing.blendGroup || null;
+            existing.blendMethod = result.blendMethod || existing.blendMethod || null;
+            existing.sourceKey = options.sourceKey || previewSourceKey || existing.sourceKey;
+            if (previewSource) setPreviewThumbnail(existing, previewSource);
+            objects.forEach(object => {
+                object.data = object.data || {};
+                object.data.previewId = previewId;
+                object.data.previewSourceKey = existing.sourceKey;
+                object.data.previewLabel = label;
+                object.data.isFullImage = existing.isFullImage;
+                object.data.isMain = existing.isMain;
+                object.data.isAnnotation = existing.isAnnotation;
+                object.data.isSelectionMask = existing.isSelectionMask;
+                object.data.isPatch = existing.isPatch;
+                object.data.blendGroup = existing.blendGroup;
+                object.data.blendMethod = existing.blendMethod;
+                object.data.blendLabel = label;
+            });
             syncGenerationPreviewVisibility();
             return existing;
         }
         objects.forEach(object => {
+            object.data = object.data || {};
             object.data.previewId = previewId;
+            object.data.previewSourceKey = previewSourceKey;
+            object.data.previewLabel = label;
+            object.data.isFullImage = Boolean(isFullImage);
+            object.data.isMain = Boolean(options.isMain);
+            object.data.isAnnotation = Boolean(options.isAnnotation);
+            object.data.isSelectionMask = Boolean(options.isSelectionMask);
+            object.data.isPatch = Boolean(options.isPatch || isPatch);
+            object.data.blendGroup = options.blendGroup || null;
+            object.data.blendMethod = result.blendMethod || null;
+            object.data.blendLabel = label;
             object.data.previewVisible = object.visible !== false;
+            rememberImageAsset(object, null);
         });
         const card = document.createElement('div');
         card.className = 'generation-card';
         if (options.blendGroup && result.blendMethod !== 'confidence') card.classList.add('comparison-hidden');
         card.onclick = () => selectGenerationPreview(previewId);
         const thumbnail = document.createElement('img');
-        thumbnail.src = result.imageData;
-        thumbnail.alt = options.label || (isFullImage ? '整图预览' : '局部图层预览');
+        thumbnail.alt = label || (isFullImage ? '整图预览' : '局部图层预览');
+        thumbnail.decoding = 'async';
         const eye = document.createElement('button');
         eye.className = 'generation-eye';
         eye.type = 'button';
@@ -918,7 +1384,7 @@
         eye.onclick = event => { event.stopPropagation(); toggleGenerationPreview(previewId); };
         const kind = document.createElement('span');
         kind.className = 'generation-kind';
-        kind.innerText = options.label || (isFullImage ? `整图 ${result.overlay.w}×${result.overlay.h}` : '局部蒙版');
+        kind.innerText = label;
         card.append(thumbnail, eye, kind);
         let compareButton = null;
         if (options.blendGroup && result.blendMethod === 'confidence') {
@@ -935,13 +1401,13 @@
             card.append(compareButton);
         }
         let fineTuneButton = null;
-        if (isPatch) {
+        {
             fineTuneButton = document.createElement('button');
             fineTuneButton.className = 'generation-fine-tune';
             fineTuneButton.type = 'button';
             fineTuneButton.innerText = '↕';
-            fineTuneButton.title = '微调补丁位置';
-            fineTuneButton.setAttribute('aria-label', '微调补丁位置');
+            fineTuneButton.title = '微调图层位置';
+            fineTuneButton.setAttribute('aria-label', '微调图层位置');
             fineTuneButton.onclick = event => {
                 event.stopPropagation();
                 toggleFineTune(previewId);
@@ -949,14 +1415,15 @@
             card.append(fineTuneButton);
         }
         if (options.prepend) items.prepend(card); else items.appendChild(card);
-        const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch};
+        const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage:Boolean(isFullImage), sourceKey:previewSourceKey, sourceImageData:previewSource, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch};
         generationPreviewObjects.set(previewId, entry);
+        if (previewSource) setPreviewThumbnail(entry, previewSource);
         syncGenerationPreviewVisibility();
         return entry;
     }
 
     function deleteSelectedPreviewLayer() {
-        const entry = generationPreviewObjects.get(selectedPreviewId);
+        const entry = resolveLivePreviewEntry(selectedPreviewId);
         if (!entry) return;
         const entries = entry.blendGroup
             ? [...generationPreviewObjects.values()].filter(item => item.blendGroup === entry.blendGroup)
@@ -967,10 +1434,14 @@
         }
         const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
         if (entries.some(item => item.previewId === fineTunePreviewId)) fineTunePreviewId = null;
+        suppressPreviewCardSync = true;
         deletedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
+        suppressPreviewCardSync = false;
         if (entries.some(item => item.isSelectionMask)) {
+            hideMaskOverlay();
             expertRectGuides = expertRectGuides.filter(object => !deletedObjects.includes(object));
             expertBrushPaths = expertBrushPaths.filter(object => !deletedObjects.includes(object));
+            expertSubtractPaths = expertSubtractPaths.filter(object => !deletedObjects.includes(object));
             expertGeneratingGuides = expertGeneratingGuides.filter(object => !deletedObjects.includes(object));
             if (deletedObjects.includes(expertGuide)) expertGuide = null;
             stopExpertSelectionDrawing();
@@ -978,6 +1449,8 @@
         }
         entries.forEach(item => {
             item.card.remove();
+            item.thumbnail.removeAttribute('src');
+            if (item.sourceKey) imageAssetSources.delete(item.sourceKey);
             generationPreviewObjects.delete(item.previewId);
         });
         if (!generationPreviewObjects.size) {
@@ -986,10 +1459,33 @@
         if (entries.some(item => item.isAnnotation)) { annotationMarkerNumber = 1; updateAnnotationMarkerButton(); }
         if (entry.blendGroup) expandedBlendGroups.delete(entry.blendGroup);
         selectedPreviewId = null;
+        maskPatchSelection = null;
         document.getElementById('preview-selection-toolbar').hidden = true;
         canvas.discardActiveObject();
+        updatePreviewToolbar();
         canvas.requestRenderAll();
-        pushHistoryForPage(currentPageGlobal);
+        queueHistoryForPage(currentPageGlobal);
+    }
+
+    function cleanupPreviewEntryForRemovedObject(object) {
+        if (suppressPreviewCardSync || isRestoringHistory || !object?.data?.previewId) return;
+        const entry = generationPreviewObjects.get(object.data.previewId);
+        if (!entry) return;
+        entry.objects = (entry.objects || []).filter(item => item !== object && item?.canvas === canvas);
+        if (entry.objects.length) {
+            syncGenerationPreviewVisibility();
+            return;
+        }
+        entry.card?.remove();
+        entry.thumbnail?.removeAttribute('src');
+        if (entry.sourceKey) imageAssetSources.delete(entry.sourceKey);
+        generationPreviewObjects.delete(entry.previewId);
+        if (selectedPreviewId === entry.previewId) {
+            selectedPreviewId = null;
+            document.getElementById('preview-selection-toolbar').hidden = true;
+            canvas.discardActiveObject();
+        }
+        syncGenerationPreviewVisibility();
     }
 
     function setSelectedLayerAsMain() {
@@ -1011,8 +1507,6 @@
                     object.set('visible', true);
                 } else {
                     if (object.data.type === 'main-image') object.data.type = object.data.originalType || 'image-layer';
-                    object.data.previewVisible = false;
-                    object.set('visible', false);
                 }
             });
         });
@@ -1027,7 +1521,8 @@
         fitToScreen();
         syncGenerationPreviewVisibility();
         canvas.requestRenderAll();
-        setExpertStatus('已置为主图，其他图片图层已暂时隐藏', '#4ec9b0');
+        setExpertStatus('已置为主图，其他图片图层保持当前显示状态', '#4ec9b0');
+        queueHistoryForPage(currentPageGlobal);
     }
 
     function setAnnotationColor(color) {
@@ -1050,11 +1545,13 @@
         canvas.defaultCursor = 'default';
         updateAnnotationMarkerButton();
         updateAnnotationActionButtons();
+        updatePreviewToolbar();
     }
 
     function startAnnotationBrush() {
         if (!canvas) return;
         if (annotationMode === 'brush') { stopAnnotationMode(); setExpertStatus('已退出画笔选择模式', '#dcdcaa'); return; }
+        stopMaskBrush();
         stopExpertSelectionDrawing();
         stopAnnotationMode();
         annotationMode = 'brush';
@@ -1062,15 +1559,77 @@
         canvas.selection = false;
         canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
         canvas.freeDrawingBrush.color = annotationColor;
-        canvas.freeDrawingBrush.width = 8;
+        canvas.freeDrawingBrush.width = previewBrushSize;
         canvas.isDrawingMode = true;
         updateAnnotationActionButtons();
+        updatePreviewToolbar();
         setExpertStatus('标记画笔已开启，直接在主图上绘制', '#4ec9b0');
+    }
+
+    function maskPreviewEntry() {
+        const entry = selectedPreviewEntry();
+        return entry?.isSelectionMask ? entry : null;
+    }
+
+    function stopMaskBrush() {
+        if (!canvas) return;
+        maskBrushMode = null;
+        maskOverlayStrokeActive = false;
+        maskOverlayLastPoint = null;
+        document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active');
+        canvas.getObjects().forEach(object => { object.erasable = false; });
+        if (annotationMode !== 'brush' && annotationMode !== 'text' && annotationMode !== 'marker') {
+            canvas.isDrawingMode = false;
+            canvas.selection = true;
+            canvas.defaultCursor = 'default';
+        }
+        updatePreviewToolbar();
+    }
+
+    function startMaskBrush(mode) {
+        if (!canvas || !maskPreviewEntry()) return;
+        if (maskBrushMode === mode) { stopMaskBrush(); setExpertStatus('已退出蒙版编辑', '#dcdcaa'); return; }
+        stopAnnotationMode();
+        stopExpertSelectionDrawing();
+        showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || maskPreviewEntry().sourceImageData || null);
+        maskBrushMode = mode === 'subtract' ? 'subtract' : 'add';
+        bindMaskOverlayEvents();
+        canvas.discardActiveObject();
+        canvas.selection = false;
+        canvas.isDrawingMode = false;
+        canvas.defaultCursor = 'crosshair';
+        document.getElementById('mask-edit-overlay')?.classList.add('is-brush-active');
+        updatePreviewToolbar();
+        setExpertStatus(maskBrushMode === 'subtract' ? '橡皮擦已开启：在蒙版上涂抹以精细消减' : '涂抹已开启：在蒙版上涂抹以精细增加', '#4ec9b0');
+    }
+
+    function startMaskPatchSourceSelection() {
+        const entry = maskPreviewEntry();
+        if (!entry) return;
+        if (maskPatchSelection?.maskPreviewId === entry.previewId) {
+            clearMaskPatchSourceSelection();
+            setExpertStatus('已取消取图源选择', '#dcdcaa');
+            return;
+        }
+        stopMaskBrush();
+        stopAnnotationMode();
+        fineTunePreviewId = null;
+        maskPatchSelection = {maskPreviewId:entry.previewId};
+        updatePreviewToolbar();
+        setExpertStatus('请选择一个图片缩略图作为取图源', '#dcdcaa');
+        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation && !item.isMain));
+    }
+
+    function clearMaskPatchSourceSelection() {
+        maskPatchSelection = null;
+        generationPreviewObjects.forEach(item => item.card.classList.remove('source-candidate'));
+        updatePreviewToolbar();
     }
 
     function addAnnotationText() {
         if (!canvas) return;
         if (annotationMode === 'text') { stopAnnotationMode(); setExpertStatus('已退出文字选择模式', '#dcdcaa'); return; }
+        stopMaskBrush();
         stopAnnotationMode();
         annotationMode = 'text';
         canvas.selection = false;
@@ -1144,6 +1703,7 @@
             setExpertStatus('标记号已归零，再次点击“标记”可从 1 开始', '#4ec9b0');
             return;
         }
+        stopMaskBrush();
         stopAnnotationMode();
         annotationMode = 'marker';
         canvas.selection = false;
@@ -1178,6 +1738,7 @@
         if (!objects.length) {
             const entry = generationPreviewObjects.get(annotationPreviewId);
             entry?.card?.remove();
+            if (entry?.sourceKey) imageAssetSources.delete(entry.sourceKey);
             generationPreviewObjects.delete(annotationPreviewId);
             if (selectedPreviewId === annotationPreviewId) {
                 selectedPreviewId = null;
@@ -1284,6 +1845,7 @@
         try { canvas.lowerCanvasEl.style.visibility = 'hidden'; } catch(e) {}
         canvas.setDimensions({ width: totalWidth, height: totalHeight });
         canvas.setViewportTransform([zoom, 0, 0, zoom, offsetX, offsetY]);
+        updateMaskOverlayTransform();
         canvas.renderAll();
         try { canvas.lowerCanvasEl.style.visibility = 'visible'; } catch(e) {}
     }
@@ -1332,7 +1894,7 @@
                     
                     if (openResult.success) {
                         // 清空历史记录
-                        historyMap = {};
+                        resetEditorHistory();
                         
                         // 重置透明度 UI
                         currentOpacity = 0.8;
@@ -1361,7 +1923,7 @@
             if(res) {
                 // 【核心修改】打开新文件时，才彻底清空历史记录
                 // 翻页时不要调用这个，否则会丢失上一页的记录
-                historyMap = {};
+                resetEditorHistory();
 
                 // 重置透明度 UI
                 currentOpacity = 0.8;
@@ -1550,10 +2112,16 @@
                                     hqImg.set({ selectable:true,evented:true,left:0,top:0,scaleX:scaleX,scaleY:scaleY,
                                         lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true,data:{...img.data} });
                                     const mainEntry = generationPreviewObjects.get(img.data.previewId);
-                                    canvas.remove(img);
-                                    canvas.add(hqImg);
-                                    if (mainEntry) mainEntry.objects = [hqImg];
+                                    suppressPreviewCardSync = true;
+                                    try {
+                                        canvas.remove(img);
+                                        canvas.add(hqImg);
+                                        if (mainEntry) mainEntry.objects = [hqImg];
+                                    } finally {
+                                        suppressPreviewCardSync = false;
+                                    }
                                     canvas.sendToBack(hqImg);
+                                    syncGenerationPreviewVisibility();
                                     canvas.requestRenderAll();
                                     console.log(`✅ HQ background loaded for page ${requestedPage}`);
                                 });
@@ -1656,6 +2224,7 @@
                             updateAnnotationMarkerButton();
                             canvas.requestRenderAll();
                             try { document.getElementById('font-height-input').value = ''; } catch(e) {}
+                            try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
                             e.preventDefault();
                         }
                     }
@@ -1669,16 +2238,17 @@
                 if (fineTunePreviewId) {
                     const fineTuneEntry = generationPreviewObjects.get(fineTunePreviewId);
                     const fineTuneObjects = previewEntryObjects(fineTuneEntry);
-                    if (fineTuneEntry?.isPatch && fineTuneObjects.length === 1) {
-                        const patchObject = fineTuneObjects[0];
+                    if (fineTuneEntry && !fineTuneEntry.isMain && fineTuneObjects.length) {
                         const step = 1;
-                        if (e.key === 'ArrowUp') patchObject.top = (patchObject.top || 0) - step;
-                        if (e.key === 'ArrowDown') patchObject.top = (patchObject.top || 0) + step;
-                        if (e.key === 'ArrowLeft') patchObject.left = (patchObject.left || 0) - step;
-                        if (e.key === 'ArrowRight') patchObject.left = (patchObject.left || 0) + step;
-                        patchObject.setCoords();
+                        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+                        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+                        fineTuneObjects.forEach(patchObject => {
+                            patchObject.left = (patchObject.left || 0) + dx;
+                            patchObject.top = (patchObject.top || 0) + dy;
+                            patchObject.setCoords();
+                        });
                         canvas.requestRenderAll();
-                        pushHistoryForPage(currentPageGlobal);
+                        queueHistoryForPage(currentPageGlobal);
                         e.preventDefault();
                         return;
                     }
@@ -1742,7 +2312,7 @@
                     }
                 });
                 canvas.requestRenderAll();
-                try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
             }
             if (fontInput) {
                 fontInput.addEventListener('change', (e) => {
@@ -1775,6 +2345,8 @@
             canvas.off('object:modified');
             canvas.off('mouse:over');
             canvas.off('mouse:wheel');
+            canvas.off('after:render', updateMaskOverlayTransform);
+            canvas.on('after:render', updateMaskOverlayTransform);
         }
 
         // --- 滚轮缩放 ---
@@ -1797,6 +2369,7 @@
             
             // 执行缩放并立即请求重绘，确保状态在同一帧内更新
             canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+            updateMaskOverlayTransform();
             try { canvas.requestRenderAll(); } catch(e) {}
 
             opt.e.preventDefault();
@@ -1892,7 +2465,7 @@
                     textObj.on('editing:exited', function() {
                         if (!textObj.text || !textObj.text.trim()) {
                             canvas.remove(textObj); canvas.discardActiveObject(); canvas.requestRenderAll(); return;
-                        } else { try { pushHistoryForPage(currentPageGlobal); } catch(e) {} }
+                        } else { try { queueHistoryForPage(currentPageGlobal); } catch(e) {} }
                         canvas.setActiveObject(textObj); canvas.requestRenderAll();
                     });
                     canvas.add(textObj); canvas.setActiveObject(textObj); reorderLayers();
@@ -1933,9 +2506,9 @@
                 } else if (isPaintBucketMode && pickedColor && opt.target) {
                     let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
                     if (currentMode === 'text' && opt.target.data?.type === 'text') {
-                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
                     } else if (currentMode === 'mask' && opt.target.data?.type === 'mask') {
-                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                        opt.target.set('fill', pickedColor); canvas.requestRenderAll(); try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
                     }
                 }
                 try { if (opt.target && opt.target.data?.type === 'text') { updateFontInput(); } } catch(e) { }
@@ -1950,6 +2523,7 @@
                 var vpt = canvas.viewportTransform;
                 vpt[4] += e.clientX - lastPosX;
                 vpt[5] += e.clientY - lastPosY;
+                updateMaskOverlayTransform();
                 canvas.requestRenderAll();
                 lastPosX = e.clientX;
                 lastPosY = e.clientY;
@@ -2042,7 +2616,7 @@
                 if ((drawingObject.width && drawingObject.width < 5) || (drawingObject.radius && drawingObject.radius < 3)) {
                     canvas.remove(drawingObject);
                 } else {
-                    drawingObject.setCoords(); reorderLayers(); try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                    drawingObject.setCoords(); reorderLayers(); try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
                 }
                 drawingObject = null; toggleCreateMode();
                 return;
@@ -2056,6 +2630,12 @@
                 reorderLayers();
                 updateAnnotationLayerPreview();
                 canvas.requestRenderAll();
+                return;
+            }
+            if (maskBrushMode && event.path) {
+                // Mask editing is handled by the isolated overlay canvas. A
+                // Fabric path here would become a visible blue stroke.
+                if (event.path.canvas) canvas.remove(event.path);
                 return;
             }
             if (!expertMode || !expertSelectionActive || expertSelectionMode() !== 'brush' || !event.path) return;
@@ -2131,7 +2711,7 @@
             canvas.on('text:changed', function(event) {
                 if (event.target?.data?.type === 'annotation') updateAnnotationLayerPreview();
                 if (!isRestoringHistory) {
-                    try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+                    try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
                 }
             });
         } catch(e) {}
@@ -2141,12 +2721,19 @@
              // 每次移动或修改后，强制重排层级
              reorderLayers();
              if (event.target?.data?.type === 'annotation' || event.target?.type === 'activeSelection') updateAnnotationLayerPreview();
-               try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {}
+            try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
         });
 
-           // 记录对象添加与删除以支持 undo
-           canvas.on('object:added', function() { try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {} });
-           canvas.on('object:removed', function() { try { if (!isRestoringHistory) pushHistoryForPage(currentPageGlobal); } catch(e) {} });
+        // 记录对象添加与删除以支持 undo
+        canvas.on('object:added', function(event) {
+            const type = event.target?.data?.type;
+            if (['expert-guide','advanced-mask-guide'].includes(type)) return;
+            try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
+        });
+        canvas.on('object:removed', function(event) {
+            cleanupPreviewEntryForRemovedObject(event.target);
+            try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
+        });
     }
 
     function reorderLayers() {
@@ -2162,6 +2749,36 @@
 
     // ---------- 历史（Undo / Redo）实现 ----------
     const HISTORY_LIMIT = 5; // 固定保留最近 5 步，超出后丢弃最旧
+    const HISTORY_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    let historyPushTimer = null;
+
+    function resetEditorHistory() {
+        historyMap = {};
+        imageAssetSources.forEach((value, key) => {
+            if (String(key).startsWith('history:')) imageAssetSources.delete(key);
+        });
+    }
+
+    function pruneHistoryImageAssets(pageNum) {
+        const history = historyMap[pageNum];
+        if (!history) return;
+        const referenced = new Set();
+        [...history.undo, ...history.redo].forEach(snapshot => {
+            try {
+                const parsed = JSON.parse(snapshot);
+                (parsed.objects || []).forEach(object => {
+                    const key = object.data?.historyAssetKey;
+                    if (key) referenced.add(String(key));
+                });
+            } catch (error) { /* invalid snapshots are ignored by the existing restore path */ }
+        });
+        canvas?.getObjects().forEach(object => {
+            if (object.data?.historyAssetKey) referenced.add(String(object.data.historyAssetKey));
+        });
+        imageAssetSources.forEach((value, key) => {
+            if (String(key).startsWith(`history:${pageNum}:`) && !referenced.has(String(key))) imageAssetSources.delete(key);
+        });
+    }
 
     function getPagePayload() {
         let texts = [];
@@ -2210,9 +2827,24 @@
 
         if (!historyMap[pageNum]) historyMap[pageNum] = { undo: [], redo: [] };
         
+        if (historyPushTimer) {
+            clearTimeout(historyPushTimer);
+            historyPushTimer = null;
+        }
         try {
-            // 获取当前画布状态字符串
-            const snap = JSON.stringify(canvas.toJSON(['data']));
+            const serialized = canvas.toJSON(['data']);
+            const liveObjects = canvas.getObjects();
+            (serialized.objects || []).forEach((object, index) => {
+                if (object.type !== 'image') return;
+                const liveObject = liveObjects[index];
+                const source = rememberImageAsset(liveObject, object.src, index);
+                const key = liveObject ? imageAssetKey(liveObject, index) : `history:${pageNum}:image-${index}`;
+                if (source) imageAssetSources.set(key, source);
+                object.data = object.data || {};
+                object.data.historyAssetKey = key;
+                delete object.src;
+            });
+            const snap = JSON.stringify(serialized);
             
             // 【新增】去重判断：如果新状态和上一次状态完全一样，不存入
             const undoStack = historyMap[pageNum].undo;
@@ -2229,7 +2861,17 @@
             
             // 新操作后清空 redo
             historyMap[pageNum].redo = [];
+            pruneHistoryImageAssets(pageNum);
         } catch (e) { console.log('pushHistory error', e); }
+    }
+
+    function queueHistoryForPage(pageNum) {
+        if (!canvas || isRestoringHistory) return;
+        if (historyPushTimer) clearTimeout(historyPushTimer);
+        historyPushTimer = setTimeout(() => {
+            historyPushTimer = null;
+            pushHistoryForPage(pageNum);
+        }, 0);
     }
 
     function doUndo() {
@@ -2272,9 +2914,26 @@
     // 提取公共恢复逻辑
     function restoreCanvasState(jsonState) {
         if (!canvas || !jsonState) return;
+        hideMaskOverlay();
+        maskOverlayData = null;
         isRestoringHistory = true; // 锁定，防止恢复过程触发 object:added 再次记历史
+        suppressPreviewCardSync = true;
+        let serialized;
+        try {
+            serialized = JSON.parse(jsonState);
+            (serialized.objects || []).forEach(object => {
+                if (object.type !== 'image') return;
+                const key = object.data?.historyAssetKey;
+                object.src = imageAssetSources.get(String(key)) || object.src || HISTORY_PLACEHOLDER;
+            });
+        } catch (error) {
+            isRestoringHistory = false;
+            suppressPreviewCardSync = false;
+            console.error('History parse failed', error);
+            return;
+        }
 
-        canvas.loadFromJSON(jsonState, function() {
+        canvas.loadFromJSON(serialized, function() {
             // === 执法阶段：无论 JSON 里存了什么，都要按现在的规矩办 ===
 
             canvas.getObjects().forEach(obj => {
@@ -2315,8 +2974,16 @@
             let currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'text';
             updateLayerMode(currentMode);
 
+            expertRectGuides = canvas.getObjects().filter(object => object.data?.type === 'expert-guide' && object.type !== 'path');
+            expertBrushPaths = canvas.getObjects().filter(object => object.data?.type === 'expert-guide' && object.type === 'path' && object.data?.maskOperation !== 'subtract');
+            expertSubtractPaths = canvas.getObjects().filter(object => object.data?.type === 'expert-guide' && object.type === 'path' && object.data?.maskOperation === 'subtract');
+            expertGeneratingGuides = canvas.getObjects().filter(object => object.data?.generating);
+            expertGuide = expertRectGuides[0] || null;
+            rebuildGenerationPreviewsFromCanvas();
+
             canvas.renderAll();
             isRestoringHistory = false; // 解锁
+            suppressPreviewCardSync = false;
             console.log('History restored. Rules enforced.');
         });
     }
@@ -2342,7 +3009,7 @@
 
     // 'change' 事件：鼠标松开滑块时，只记录【一次】历史
     opacitySlider.addEventListener('change', (e) => {
-        try { pushHistoryForPage(currentPageGlobal); } catch(e) {}
+        try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
     });
 
     // 2. 显示/隐藏文本与高级蒙版
@@ -2598,13 +3265,14 @@
     }
 
     function expertSelectionGuides() {
-        return expertRectGuides.concat(expertBrushPaths).filter(guide => guide.canvas);
+        return expertRectGuides.concat(expertBrushPaths, expertSubtractPaths).filter(guide => guide.canvas);
     }
 
     function expertSelectionSummary() {
         const parts = [];
         if (expertRectGuides.length) parts.push(`${expertRectGuides.length} 个框选`);
         if (expertBrushPaths.length) parts.push(`${expertBrushPaths.length} 笔涂抹`);
+        if (expertSubtractPaths.length) parts.push(`${expertSubtractPaths.length} 笔擦除`);
         return parts.join('、');
     }
 
@@ -2653,11 +3321,13 @@
     function clearExpertSelection() {
         if (!canvas) return;
         stopExpertSelectionDrawing();
+        stopMaskBrush();
+        maskOverlayData = null;
         if (drawingObject?.data?.type === 'expert-guide') { canvas.remove(drawingObject); drawingObject = null; }
         if (expertGuide?.canvas) canvas.remove(expertGuide);
         expertGuide = null;
         expertSelectionGuides().forEach(guide => { if (guide.canvas) canvas.remove(guide); });
-        expertRectGuides = []; expertBrushPaths = [];
+        expertRectGuides = []; expertBrushPaths = []; expertSubtractPaths = [];
         removeExpertSelectionPreviewCard();
         updateExpertSelectionControls(); canvas.requestRenderAll();
     }
@@ -2670,28 +3340,44 @@
 
     function exportExpertSelectionMask() {
         const guides = expertSelectionGuides();
-        if (!guides.length) return null;
-        const boundsList = guides.map(guide => guide.getBoundingRect(true, true));
+        const additiveGuides = guides.filter(guide => guide.data?.maskOperation !== 'subtract');
+        if (!additiveGuides.length) return null;
+        const boundsList = additiveGuides.map(guide => guide.getBoundingRect(true, true));
         const x1 = Math.max(0, Math.min(...boundsList.map(item => item.left)));
         const y1 = Math.max(0, Math.min(...boundsList.map(item => item.top)));
         const x2 = Math.min(canvas.originalWidth, Math.max(...boundsList.map(item => item.left + item.width)));
         const y2 = Math.min(canvas.originalHeight, Math.max(...boundsList.map(item => item.top + item.height)));
         if (x2 - x1 < 2 || y2 - y1 < 2) return null;
 
-        const states = canvas.getObjects().map(obj => ({obj,visible:obj.visible,stroke:obj.stroke,fill:obj.fill,opacity:obj.opacity,shadow:obj.shadow}));
+        if (maskOverlayActive && maskOverlayCanvas) {
+            const maskData = exportMaskOverlayData();
+            if (maskData) return {bounds:{x:x1,y:y1,w:x2-x1,h:y2-y1},maskData,guides};
+        }
+
+        // The overlay is hidden while other thumbnails or tools are active,
+        // but its pixel data is persisted on the guide objects. Prefer that
+        // data so erase strokes remain transparent after switching views or
+        // restoring an undo/redo snapshot.
+        const persistedMaskData = persistedMaskOverlayData();
+        if (persistedMaskData) {
+            return {bounds:{x:x1,y:y1,w:x2-x1,h:y2-y1},maskData:persistedMaskData,guides};
+        }
+
+        const states = canvas.getObjects().map(obj => ({obj,visible:obj.visible,stroke:obj.stroke,fill:obj.fill,opacity:obj.opacity,shadow:obj.shadow,globalCompositeOperation:obj.globalCompositeOperation}));
         const backgroundColor = canvas.backgroundColor;
         const dimensions = {width:canvas.getWidth(),height:canvas.getHeight()};
         const viewport = canvas.viewportTransform.slice();
         states.forEach(state => {
             if (!guides.includes(state.obj)) state.obj.set('visible', false);
-            else if (state.obj.type === 'path') state.obj.set({visible:true,stroke:'#ffffff',fill:null,opacity:1,shadow:null});
-            else state.obj.set({visible:true,stroke:'#ffffff',fill:'#ffffff',opacity:1,shadow:null});
+            else if (state.obj.data?.maskOperation === 'subtract') state.obj.set({visible:true,stroke:'#ffffff',fill:null,opacity:1,shadow:null,globalCompositeOperation:'destination-out'});
+            else if (state.obj.type === 'path') state.obj.set({visible:true,stroke:'#ffffff',fill:null,opacity:1,shadow:null,globalCompositeOperation:'source-over'});
+            else state.obj.set({visible:true,stroke:'#ffffff',fill:'#ffffff',opacity:1,shadow:null,globalCompositeOperation:'source-over'});
         });
         canvas.backgroundColor = 'rgba(0,0,0,0)';
         canvas.setDimensions({width:canvas.originalWidth,height:canvas.originalHeight});
         canvas.setViewportTransform([1,0,0,1,0,0]); canvas.renderAll();
         const maskData = canvas.toDataURL({format:'png',left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,multiplier:1});
-        states.forEach(state => state.obj.set({visible:state.visible,stroke:state.stroke,fill:state.fill,opacity:state.opacity,shadow:state.shadow}));
+        states.forEach(state => state.obj.set({visible:state.visible,stroke:state.stroke,fill:state.fill,opacity:state.opacity,shadow:state.shadow,globalCompositeOperation:state.globalCompositeOperation}));
         canvas.backgroundColor = backgroundColor; canvas.setDimensions(dimensions); canvas.setViewportTransform(viewport); canvas.renderAll();
         return {bounds:{x:x1,y:y1,w:x2-x1,h:y2-y1},maskData,guides};
     }
@@ -2699,14 +3385,21 @@
     function removeExpertSelectionPreviewCard() {
         const previewId = 'expert-selection-mask';
         const entry = generationPreviewObjects.get(previewId);
-        if (!entry) return;
+        if (!entry) {
+            maskOverlayData = null;
+            return;
+        }
+        maskOverlayData = null;
         entry.card.remove();
+        if (entry.sourceKey) imageAssetSources.delete(entry.sourceKey);
         generationPreviewObjects.delete(previewId);
         if (selectedPreviewId === previewId) {
             selectedPreviewId = null;
+            maskPatchSelection = null;
             document.getElementById('preview-selection-toolbar').hidden = true;
             canvas?.discardActiveObject();
         }
+        updatePreviewToolbar();
     }
 
     function refreshExpertSelectionPreview() {
@@ -2746,6 +3439,81 @@
         canvas.setViewportTransform(viewport);
         canvas.renderAll();
         return imageData;
+    }
+
+    function exportPreviewLayerImage(entry) {
+        const objects = previewEntryObjects(entry);
+        if (!objects.length) return null;
+        const states = canvas.getObjects().map(object => ({object,visible:object.visible}));
+        const background = canvas.backgroundColor;
+        const dimensions = {width:canvas.getWidth(),height:canvas.getHeight()};
+        const viewport = canvas.viewportTransform.slice();
+        states.forEach(state => state.object.set('visible', objects.includes(state.object)));
+        canvas.backgroundColor = 'rgba(0,0,0,0)';
+        canvas.setDimensions({width:canvas.originalWidth,height:canvas.originalHeight});
+        canvas.setViewportTransform([1,0,0,1,0,0]);
+        canvas.renderAll();
+        const imageData = canvas.toDataURL({format:'png',left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,multiplier:1});
+        states.forEach(state => state.object.set('visible', state.visible));
+        canvas.backgroundColor = background;
+        canvas.setDimensions(dimensions);
+        canvas.setViewportTransform(viewport);
+        canvas.renderAll();
+        return imageData;
+    }
+
+    function mainPreviewEntry() {
+        return [...generationPreviewObjects.values()].find(entry => entry.isMain);
+    }
+
+    async function generateMaskPatchFromSource(sourcePreviewId) {
+        if (maskPatchBusy) return;
+        const maskEntry = maskPreviewEntry();
+        const sourceEntry = resolveLivePreviewEntry(sourcePreviewId);
+        const sourceObjects = previewEntryObjects(sourceEntry);
+        const maskPayload = exportExpertSelectionMask();
+        const mainEntry = mainPreviewEntry();
+        if (!maskEntry || !sourceEntry || !mainEntry || sourceObjects.length !== 1 || sourceObjects[0].type !== 'image' || !maskPayload) {
+            clearMaskPatchSourceSelection();
+            setExpertStatus('无法生成补丁：请确认蒙版、主图和取图源均有效', '#f48771');
+            return;
+        }
+        const mainImage = exportPreviewLayerImage(mainEntry);
+        const sourceLayer = exportPreviewLayerImage(sourceEntry);
+        if (!mainImage || !sourceLayer) {
+            clearMaskPatchSourceSelection();
+            setExpertStatus('取图源导出失败', '#f48771');
+            return;
+        }
+        maskPatchBusy = true;
+        setExpertStatus('正在按蒙版范围生成置信度补丁...', '#dcdcaa');
+        try {
+            const raw = await pywebview.api.create_mask_patch_image_data(mainImage, sourceLayer, maskPayload.maskData);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error || !result?.imageData) throw new Error(result?.message || result?.error || '补丁图为空');
+            await new Promise((resolve, reject) => fabric.Image.fromURL(result.imageData, image => {
+                if (!image) { reject(new Error('补丁图加载失败')); return; }
+                const layerId = `mask-patch-${Date.now()}`;
+                image.set({left:0,top:0,scaleX:(result.width || canvas.originalWidth) / image.width,scaleY:(result.height || canvas.originalHeight) / image.height,
+                    selectable:true,evented:true,hasControls:false,lockScalingX:true,lockScalingY:true,lockRotation:true,
+                    data:{type:'advanced-mask',id:layerId,assetId:layerId,previewVisible:true,isFullImage:true,isPatch:true,blendMethod:'confidence',blendLabel:'置信度补丁'}});
+                canvas.add(image);
+                const entry = addGenerationPreview({id:image.data?.id || Date.now(),imageData:result.imageData,overlay:{x:0,y:0,w:result.width || canvas.originalWidth,h:result.height || canvas.originalHeight},blendMethod:'confidence',blendLabel:'置信度补丁'}, image, true, {label:'置信度补丁',isPatch:true});
+                reorderLayers();
+                canvas.requestRenderAll();
+                clearMaskPatchSourceSelection();
+                selectGenerationPreview(entry.previewId);
+                queueHistoryForPage(currentPageGlobal);
+                resolve();
+            }));
+            setExpertStatus('已生成置信度补丁，可用缩略图上的微调按钮移动', '#4ec9b0');
+        } catch (error) {
+            console.error(error);
+            setExpertStatus(`生成补丁失败：${error.message || error}`, '#f48771');
+        } finally {
+            maskPatchBusy = false;
+            clearMaskPatchSourceSelection();
+        }
     }
 
     function finishExpertGuideGeneration(guides) {
@@ -2938,7 +3706,7 @@
                     const blendGroup = item._blendGroup || (isBlendComparison ? `${jobId}:blend:${item.sourceIndex || addedCount}` : null);
                     item._previewEntry = addGenerationPreview(item, img, isFullImage, {label:previewLabel, blendGroup});
                     reorderLayers();
-                    canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal); addedCount += 1; resolve();
+                    canvas.requestRenderAll(); queueHistoryForPage(currentPageGlobal); addedCount += 1; resolve();
                 });
             });
             for (const item of results) {
@@ -3168,7 +3936,7 @@
                 canvas.add(img);
                 addGenerationPreview(result, img, false);
                 reorderLayers();
-                canvas.requestRenderAll(); pushHistoryForPage(currentPageGlobal);
+                canvas.requestRenderAll(); queueHistoryForPage(currentPageGlobal);
                 advancedMaskJobs.delete(job.id);
                 const remaining = advancedMaskJobs.size;
                 hint.style.color = '#4ec9b0';
@@ -3350,6 +4118,7 @@
             const raw = await pywebview.api.open_image_data(imageData);
             const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
             if (result?.error) throw new Error(result.error);
+            resetEditorHistory();
             initCanvas(result);
             setExpertStatus(`已从空间设计导入 ${width}×${height} 图片`, '#4ec9b0');
         } catch (error) {
@@ -3392,7 +4161,10 @@
         try {
             const raw = await pywebview.api.open_image();
             const result = JSON.parse(raw);
-            if (!result.cancelled) initCanvas(result);
+            if (!result.cancelled) {
+                resetEditorHistory();
+                initCanvas(result);
+            }
         } catch (error) {
             setExpertStatus(error.message || String(error), '#f48771');
         }
@@ -3442,9 +4214,9 @@
     }
 
     function selectedPreviewImageData() {
-        const entry = generationPreviewObjects.get(selectedPreviewId);
-        if (!entry || !entry.thumbnail?.src) return null;
-        return entry.thumbnail.src;
+        const entry = resolveLivePreviewEntry(selectedPreviewId);
+        if (!entry) return null;
+        return entry.sourceImageData || imageAssetSources.get(entry.sourceKey) || null;
     }
 
     async function saveImageFile(mode) {

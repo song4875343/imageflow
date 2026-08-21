@@ -1127,7 +1127,7 @@ export function createPlanEditor(options) {
       const headerHeight = curtainWallDoor ? 0 : Math.max(0, roomHeight - height);
       const wallMat = materialFor('wall', selected, preview, colorFor(item, 2, 'wall'), opacityFor(item, 2));
       const leafMat = materialFor(kind, selected, preview, colorFor(item, 0, item.material || 'oakDark'), opacityFor(item, 0));
-      const frameMat = materialFor(kind, selected, preview, colorFor(item, 1, '#3f2619'), opacityFor(item, 1));
+      const frameMat = materialFor(kind, selected, preview, colorFor(item, 0, item.material || 'oakDark'), opacityFor(item, 1));
       if (!curtainWallDoor && headerHeight > 0) addBox(root, [length, headerHeight, width], [0, height + headerHeight / 2, 0], wallMat, { outline: false });
       addBox(root, [0.08, height, Math.max(0.12, width)], [-length / 2 + 0.04, height / 2, 0], frameMat);
       addBox(root, [0.08, height, Math.max(0.12, width)], [length / 2 - 0.04, height / 2, 0], frameMat);
