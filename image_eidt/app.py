@@ -536,9 +536,9 @@ class ImageEditorAPI:
         """Persist the roomspace model list to roomspace/public/models.json."""
         try:
             parsed = json.loads(models_json)
-            if not isinstance(parsed, dict) or not isinstance(
-                parsed.get("models"), list
-            ):
+            if isinstance(parsed, list):
+                parsed = {"models": parsed}
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("models"), list):
                 raise ValueError("模型数据格式错误")
             target = _ROOMSPACE_ROOT / "public" / "models.json"
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -549,6 +549,24 @@ class ImageEditorAPI:
             return json.dumps(
                 {"success": True, "path": str(target)}, ensure_ascii=False
             )
+        except Exception as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def save_roomspace_json(self, content, default_name="space.json"):
+        """Save an exported roomspace JSON through the native file dialog."""
+        try:
+            result = self._window.create_file_dialog(
+                webview.FileDialog.SAVE,
+                save_filename=str(default_name or "space.json"),
+                file_types=("JSON files (*.json)", "All files (*.*)"),
+            )
+            if not result:
+                return json.dumps({"cancelled": True})
+            path = Path(result[0] if isinstance(result, (list, tuple)) else result)
+            if not path.suffix:
+                path = path.with_suffix(".json")
+            path.write_text(str(content), encoding="utf-8")
+            return json.dumps({"success": True, "path": str(path)}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 

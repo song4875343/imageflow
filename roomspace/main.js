@@ -410,12 +410,28 @@ function appendModels(models, fileName) {
 }
 
 async function saveJsonFile(content, suggestedName) {
+  if (window.parent !== window) {
+    const id = 'json-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    const result = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('保存超时')); }, 15000);
+      const handler = event => {
+        const data = event.data;
+        if (data?.type !== 'roomspace-save-json-result' || data.id !== id) return;
+        clearTimeout(timeout); window.removeEventListener('message', handler);
+        if (data.ok) resolve(data); else { const failure = new Error(data.error || '保存失败'); if (data.error === '已取消保存') failure.name = 'AbortError'; reject(failure); }
+      };
+      window.addEventListener('message', handler);
+      window.parent.postMessage({ type: 'roomspace-save-json', id, content, suggestedName }, '*');
+    });
+    document.querySelector('.hint').textContent = result.path ? `已保存：${result.path}` : '当前空间已另存为 JSON';
+    return result.path || '';
+  }
   if (window.showSaveFilePicker) {
     const handle = await window.showSaveFilePicker({ suggestedName, types: [{ description: 'JSON 模型数据', accept: { 'application/json': ['.json'] } }] });
     const writable = await handle.createWritable();
     await writable.write(content);
     await writable.close();
-    return;
+    return '';
   }
   const blob = new Blob([content], { type: 'application/json' });
   const link = document.createElement('a');
@@ -427,8 +443,8 @@ async function saveJsonFile(content, suggestedName) {
 
 async function saveCurrentAsJson() {
   if (!activeModel) return;
-  await saveJsonFile(JSON.stringify({ models: [activeModel] }, null, 2), slugify(activeModel.name || activeModel.id) + '.json');
-  document.querySelector('.hint').textContent = '当前空间已另存为 JSON';
+  const path = await saveJsonFile(JSON.stringify({ models: [activeModel] }, null, 2), slugify(activeModel.name || activeModel.id) + '.json');
+  document.querySelector('.hint').textContent = path ? `已保存：${path}` : '当前空间已另存为 JSON';
 }
 
 async function saveModelsToSystem() {

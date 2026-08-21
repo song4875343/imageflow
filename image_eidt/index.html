@@ -3152,7 +3152,9 @@
     function setExpertStatus(message, color) {
         const status = document.getElementById('expert-status');
         status.innerText = message || '';
-        status.style.color = color || '#888';
+        // Keep every non-error status readable; the previous yellow/grass-green
+        // colors had poor contrast against the parameter panel background.
+        status.style.color = color === '#f48771' ? '#b42318' : (message ? '#1f5a45' : '#888');
     }
 
     function logExpertDebug(event, details={}) {
@@ -4170,6 +4172,21 @@
             frame.contentWindow.postMessage({ type: 'roomspace-save-models-result', id: requestId, ok, error }, '*');
         }
     }
+    async function saveRoomspaceJson(requestId, content, suggestedName) {
+        let ok = false;
+        let error = '';
+        let path = '';
+        try {
+            const raw = await pywebview.api.save_roomspace_json(content, suggestedName);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            ok = !result?.cancelled;
+            path = result?.path || '';
+            if (result?.cancelled) error = '已取消保存';
+        } catch (e) { error = e.message || String(e); }
+        const frame = document.getElementById('roomspace-frame');
+        if (frame?.contentWindow) frame.contentWindow.postMessage({ type: 'roomspace-save-json-result', id: requestId, ok, error, path }, '*');
+    }
     window.addEventListener('message', event => {
         const data = event.data;
         if (!data || typeof data !== 'object') return;
@@ -4177,6 +4194,8 @@
             openImageFromDataUrl(data.imageData, data.width, data.height);
         } else if (data.type === 'roomspace-save-models') {
             saveRoomspaceModels(data.id, data.models);
+        } else if (data.type === 'roomspace-save-json') {
+            saveRoomspaceJson(data.id, data.content, data.suggestedName);
         } else if (data.type === 'roomspace-ready') {
             if (event.source) {
                 event.source.postMessage({ type: 'roomspace-theme', theme: currentTheme }, '*');

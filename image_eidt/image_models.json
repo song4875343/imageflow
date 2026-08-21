@@ -1,5 +1,5 @@
 {
-  "current_model": "yunqiao::gpt-image-2",
+  "current_model": "反重力::gemini-3.1-flash-image",
   "models": [
     {
       "id": "jojo::gpt-image-2",
@@ -21,6 +21,13 @@
       "provider": "yunqiao",
       "baseurl": "https://api.quya.org/v1",
       "key": "sk-d46d01fca467d961b761e34c74388e51bd757339892a931bebb62c87d44acb2e"
+    },
+    {
+      "id": "反重力::gemini-3-pro-image",
+      "model": "gemini-3-pro-image",
+      "provider": "反重力",
+      "baseurl": "http://127.0.0.1:8045/v1",
+      "key": "sk-23d3453d5efb42ec9ea3ada74f38a41b"
     }
   ]
 }

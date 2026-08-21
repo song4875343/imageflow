@@ -1374,7 +1374,9 @@
           "east": true,
           "west": true
         },
-        "hiddenItemIds": []
+        "hiddenItemIds": [],
+        "ceilingColor": "#e9e6dc",
+        "ceilingGray": 0
       },
       "cameraPresets": [
         {
@@ -4058,8 +4060,8 @@
             "kind": "pillar",
             "componentType": "pillar",
             "position": [
-              10.05,
-              4.55
+              9.8,
+              4.49
             ],
             "size": [
               0.6,
@@ -4753,26 +4755,6 @@
             "material": "glass",
             "wallSide": "south",
             "sourceWall": "south",
-            "sillHeight": 0,
-            "roomHeight": 3
-          },
-          {
-            "id": "curtain-wall-east-01",
-            "kind": "curtainWall",
-            "componentType": "curtainWall",
-            "position": [
-              10.3,
-              0
-            ],
-            "size": [
-              14.4,
-              0.12
-            ],
-            "height": 3,
-            "rotation": 1.5707963267948966,
-            "material": "glass",
-            "wallSide": "east",
-            "sourceWall": "east",
             "sillHeight": 0,
             "roomHeight": 3
           },
@@ -6031,6 +6013,29 @@
               1,
               1
             ]
+          },
+          {
+            "id": "wall-1787302978786",
+            "kind": "wall",
+            "componentType": "wall",
+            "material": "wall",
+            "color": "#e1dfd8",
+            "position": [
+              10.22,
+              0.02
+            ],
+            "size": [
+              14.54,
+              0.22
+            ],
+            "height": 3,
+            "roomHeight": 3,
+            "sillHeight": 0,
+            "rotation": 1.5707963267948966,
+            "mirrorX": false,
+            "mirrorZ": false,
+            "wallSide": "south",
+            "y": 1.5
           }
         ],
         "background": {
@@ -6057,7 +6062,9 @@
           "table-water-island-01",
           "chair-water-island-02",
           "chair-water-island-01"
-        ]
+        ],
+        "ceilingColor": "#e9e6dc",
+        "ceilingGray": 0
       },
       "cameraPresets": [
         {
@@ -6072,7 +6079,7 @@
           "target": [
             -0.2377493467767776,
             0.8382112365824076,
-            -0.00006107773099984019
+            -6.107773099984019e-05
           ],
           "focalLength": 26,
           "wallVisibility": {
