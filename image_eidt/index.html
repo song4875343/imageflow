@@ -626,8 +626,19 @@
         </div>
     </div>
     <div id="generation-preview">
-        <button class="preview-add-btn" onclick="openImageFile()" title="打开图片">+</button>
+        <button class="preview-add-btn" onclick="openImageFileChoices()" title="打开图片">+</button>
         <div id="generation-preview-items"><span class="generation-preview-empty">生成结果会依次出现在这里</span></div>
+    </div>
+    <div id="image-file-choice-dialog" class="save-choice-overlay" hidden onclick="handleImageFileChoicesBackdrop(event)">
+        <div class="save-choice-panel">
+            <h4 class="save-choice-title">加载图片</h4>
+            <p class="save-choice-note">选择加载方式：主图会成为画布背景层，其他图片会作为可移动的整图图层加入预览栏。</p>
+            <div class="save-choice-actions">
+                <button class="layer-action" onclick="chooseImageFileLoad('main')">加载主图</button>
+                <button class="layer-action" onclick="chooseImageFileLoad('other')">加载其他图</button>
+                <button class="layer-action save-choice-cancel" onclick="closeImageFileChoices()">取消</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -3357,6 +3368,12 @@
         } catch (_) {}
     }
 
+    function expertWebridgeSiteLabel() {
+        const siteSelect = document.getElementById('expert-webridge-site');
+        if (siteSelect && siteSelect.selectedIndex >= 0) return siteSelect.options[siteSelect.selectedIndex].text || siteSelect.value || 'gemini';
+        return siteSelect?.value || 'gemini';
+    }
+
     function expertSelectionMode() {
         return document.querySelector('input[name="expert-selection-mode"]:checked')?.value || 'rect';
     }
@@ -3639,7 +3656,7 @@
         const model = document.getElementById('expert-model').value;
         if (generationMode !== 'webridge' && !model) { setExpertStatus('请选择模型', '#f48771'); return; }
         const modelLabel = generationMode === 'webridge'
-            ? `WebBridge（${document.getElementById('expert-webridge-site')?.value || 'gemini'}）`
+            ? `WebBridge（${expertWebridgeSiteLabel()}）`
             : model;
         if (!prompt) { setExpertStatus(`模型：${modelLabel} · 请输入修改描述`, '#f48771'); return; }
         stopExpertSelectionDrawing();
@@ -3870,7 +3887,9 @@
             }
             const sizeDecisionText = result.sizeDecision === 'resize' ? '（已强制缩放）' : result.sizeDecision === 'actual' ? '（采用返回尺寸）' : '';
             const maskProtectionText = result.maskProtected ? '，蒙版外已保护' : '';
-            const submittedModelLabel = result.submittedModel ? `${result.submittedModel}（${result.submittedProvider || '未设置'}）` : model;
+            const submittedModelLabel = generationMode === 'webridge'
+                ? `WebBridge（${expertWebridgeSiteLabel()}）`
+                : (result.submittedModel ? `${result.submittedModel}（${result.submittedProvider || '未设置'}）` : model);
             const firstResult = results[0] || result;
             const countText = addedCount > 1 ? `，已生成 ${addedCount} 张` : '';
             const movedItem = results.find(item => item.alignmentMoved);
@@ -4300,7 +4319,7 @@
     function showHelp() {
         alert('先打开图片，在画布上绘制框选或涂抹蒙版，填写修改描述后点击“生成图片”。');
     }
-    async function openImageFile() {
+async function openImageFile() {
         try {
             const raw = await pywebview.api.open_image();
             const result = JSON.parse(raw);
@@ -4311,6 +4330,67 @@
         } catch (error) {
             setExpertStatus(error.message || String(error), '#f48771');
         }
+    }
+
+    function openImageFileChoices() {
+        document.getElementById('image-file-choice-dialog').hidden = false;
+    }
+    function closeImageFileChoices() {
+        document.getElementById('image-file-choice-dialog').hidden = true;
+    }
+    function handleImageFileChoicesBackdrop(event) {
+        if (event.target === event.currentTarget) closeImageFileChoices();
+    }
+    async function chooseImageFileLoad(kind) {
+        closeImageFileChoices();
+        if (kind === 'main') { openImageFile(); return; }
+        await loadOtherImageFile();
+    }
+    async function loadOtherImageFile() {
+        if (!canvas) { setExpertStatus('请先加载主图后再添加其他图', '#f48771'); return; }
+        try {
+            const raw = await pywebview.api.load_other_image();
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.cancelled) return;
+            if (result?.error) throw new Error(result.error);
+            await addLoadedImageToCanvas(result);
+        } catch (error) {
+            setExpertStatus(error.message || String(error), '#f48771');
+        }
+    }
+    function addLoadedImageToCanvas(result) {
+        return new Promise((resolve, reject) => {
+            fabric.Image.fromURL(result.data_url, img => {
+                if (!img) { reject(new Error('加载图片失败')); return; }
+                const maxWidth = Math.max(1, canvas.width * 0.5);
+                const maxHeight = Math.max(1, canvas.height * 0.5);
+                const scale = (img.width > maxWidth || img.height > maxHeight)
+                    ? Math.min(maxWidth / Math.max(1, img.width), maxHeight / Math.max(1, img.height))
+                    : 1;
+                img.set({
+                    left: (canvas.width - img.width * scale) / 2,
+                    top: (canvas.height - img.height * scale) / 2,
+                    scaleX: scale, scaleY: scale,
+                    selectable: true, evented: true, hasControls: true,
+                    lockMovementX: false, lockMovementY: false,
+                    lockScalingX: false, lockScalingY: false, lockRotation: false,
+                    data:{type:'advanced-mask', previewVisible:true, isFullImage:true, isMain:false, isAnnotation:false, isSelectionMask:false}
+                });
+                canvas.add(img);
+                const item = {
+                    id:`file-${Date.now()}`,
+                    assetId:`asset-${Date.now()}`,
+                    overlay:{x:img.left, y:img.top, w:Math.round(img.width * scale), h:Math.round(img.height * scale)},
+                    imageData:result.data_url,
+                    blendMethod:null, blendLabel:'参考图'
+                };
+                addGenerationPreview(item, img, true, {label:'参考图'});
+                canvas.requestRenderAll();
+                queueHistoryForPage(currentPageGlobal);
+                setExpertStatus('已加载其他图片图层：可移动/缩放，可作为补丁图源', '#4ec9b0');
+                resolve();
+            });
+        });
     }
     function requestSizeMismatchChoice(result) {
         const requested = result.requested || {};
@@ -4385,6 +4465,10 @@
     window.toggleExpertSettings = toggleExpertSettings;
     window.showHelp = showHelp;
     window.openImageFile = openImageFile;
+    window.openImageFileChoices = openImageFileChoices;
+    window.closeImageFileChoices = closeImageFileChoices;
+    window.handleImageFileChoicesBackdrop = handleImageFileChoicesBackdrop;
+    window.chooseImageFileLoad = chooseImageFileLoad;
     window.openSaveChoiceDialog = openSaveChoiceDialog;
     window.closeSaveChoiceDialog = closeSaveChoiceDialog;
     window.handleSaveChoiceBackdrop = handleSaveChoiceBackdrop;

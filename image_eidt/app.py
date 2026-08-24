@@ -40,6 +40,7 @@ from image_edit import (
     set_generation_mode,
     load_webridge_site,
     set_webridge_site,
+    WEBRIDGE_SITES,
 )
 
 
@@ -71,6 +72,32 @@ class ImageEditorAPI:
         self.image = Image.open(path).convert("RGB")
         self.image_path = path
         return self.get_slide_data()
+
+    def load_other_image(self):
+        """Pick a secondary image and return it as a data URL for the preview bar."""
+        try:
+            result = self._window.create_file_dialog(
+                webview.FileDialog.OPEN,
+                file_types=(
+                    "Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif)",
+                    "All files (*.*)",
+                ),
+            )
+            if not result:
+                return json.dumps({"cancelled": True})
+            path = Path(result[0])
+            image = Image.open(path).convert("RGB")
+            return json.dumps(
+                {
+                    "data_url": _data_url(image),
+                    "width": image.width,
+                    "height": image.height,
+                    "path": str(path),
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
     def open_image_data(self, image_data):
         """Open an image passed directly as a data URL (e.g. exported from the roomspace view)."""
@@ -456,7 +483,15 @@ class ImageEditorAPI:
         event = threading.Event()
         self._cancel_events[job_id] = event
         try:
-            selected_model = get_model_config(model)
+            if load_generation_mode() == "webridge":
+                webridge_site = load_webridge_site()
+                selected_model = {
+                    "id": f"webridge::{webridge_site}",
+                    "model": "WebBridge",
+                    "provider": WEBRIDGE_SITES.get(webridge_site, webridge_site),
+                }
+            else:
+                selected_model = get_model_config(model)
             edit_source = self.image
             if source_image:
                 encoded = str(source_image).split(",", 1)[-1]
