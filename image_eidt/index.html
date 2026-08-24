@@ -475,19 +475,33 @@
     <section id="expert-panel" style="display:none; box-sizing:border-box;">
         <h3 style="margin:0 0 10px 0;">图片编辑</h3>
         <div class="control-group" id="expert-model-settings" style="display:none;">
-            <label class="control-label">LLM 模型</label>
-            <div style="display:flex; gap:6px;">
-                <select id="expert-model" class="expert-field" style="min-width:0;"></select>
-                <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(false)" title="添加模型">+</button>
-                <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(true)" title="修改当前模型" aria-label="修改当前模型">&#9998;</button>
-                <button class="sidebar-btn secondary expert-icon-btn" onclick="removeExpertModel()" title="删除当前模型">&#8722;</button>
+            <label class="control-label">生成方式</label>
+            <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
+                <label class="edit-scope-option"><input type="radio" name="expert-generation-mode" value="api" checked onchange="onExpertGenerationModeChange(this.value)"> API</label>
+                <label class="edit-scope-option"><input type="radio" name="expert-generation-mode" value="webridge" onchange="onExpertGenerationModeChange(this.value)"> WebBridge</label>
+                <select id="expert-webridge-site" class="expert-field" style="margin-left:auto; width:auto; display:none;" onchange="setWebridgeSite()" title="WebBridge 浏览器生图站点">
+                    <option value="gemini" selected>Gemini</option>
+                    <option value="chatgpt">ChatGPT</option>
+                </select>
             </div>
-            <div id="expert-model-form" style="display:none; margin-top:8px;">
-                <input id="expert-model-name" class="expert-field" placeholder="模型名称" style="margin-bottom:6px;">
-                <input id="expert-provider" class="expert-field" placeholder="服务商名称" style="margin-bottom:6px;">
-                <input id="expert-baseurl" class="expert-field" placeholder="Base URL" style="margin-bottom:6px;">
-                <input id="expert-key" class="expert-field" type="password" placeholder="API Key（修改时留空保持原值）" style="margin-bottom:6px;">
-                <button id="expert-model-save" class="sidebar-btn" style="width:100%;" onclick="saveExpertModel()">保存模型</button>
+            <div id="expert-api-model-block">
+                <label class="control-label">LLM 模型</label>
+                <div style="display:flex; gap:6px;">
+                    <select id="expert-model" class="expert-field" style="min-width:0;"></select>
+                    <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(false)" title="添加模型">+</button>
+                    <button class="sidebar-btn secondary expert-icon-btn" onclick="toggleExpertModelForm(true)" title="修改当前模型" aria-label="修改当前模型">&#9998;</button>
+                    <button class="sidebar-btn secondary expert-icon-btn" onclick="removeExpertModel()" title="删除当前模型">&#8722;</button>
+                </div>
+                <div id="expert-model-form" style="display:none; margin-top:8px;">
+                    <input id="expert-model-name" class="expert-field" placeholder="模型名称" style="margin-bottom:6px;">
+                    <input id="expert-provider" class="expert-field" placeholder="服务商名称" style="margin-bottom:6px;">
+                    <input id="expert-baseurl" class="expert-field" placeholder="Base URL" style="margin-bottom:6px;">
+                    <input id="expert-key" class="expert-field" type="password" placeholder="API Key（修改时留空保持原值）" style="margin-bottom:6px;">
+                    <button id="expert-model-save" class="sidebar-btn" style="width:100%;" onclick="saveExpertModel()">保存模型</button>
+                </div>
+            </div>
+            <div id="expert-webridge-hint" class="hint-box" style="margin-top:8px; display:none;">
+                通过 WebBridge 浏览器流程生图：请确认 webridge 桥接服务已启动（127.0.0.1:10086）且浏览器已登录所选站点。
             </div>
         </div>
         <div class="control-group" style="margin-top:10px;">
@@ -779,6 +793,23 @@
             return {...fitGptOutputSize(width, height), imageSize:null, aspectRatio:null};
         }
         return {...presetPixelSize(mode, selectedAspectRatio), imageSize:null, aspectRatio:null};
+    }
+
+    function getWebridgeOutputOptions() {
+        const mode = document.querySelector('input[name="expert-output-size"]:checked')?.value || 'custom';
+        const selectedAspectRatio = document.getElementById('expert-aspect-ratio')?.value || 'auto';
+        const aspectRatio = resolveExpertAspectRatio();
+        if (mode === 'custom') {
+            const width = Number(document.getElementById('expert-output-width').value) || canvas.originalWidth;
+            const height = Number(document.getElementById('expert-output-height').value) || canvas.originalHeight;
+            return {width, height, imageSize:null, aspectRatio:null};
+        }
+        const longest = mode === '2k' ? 2048 : 1024;
+        const ratio = parseAspectRatio(aspectRatio) || ((canvas?.originalWidth || 1) / (canvas?.originalHeight || 1));
+        const requested = ratio >= 1
+            ? {width:longest, height:Math.max(64, Math.round(longest / ratio))}
+            : {width:Math.max(64, Math.round(longest * ratio)), height:longest};
+        return {width:requested.width, height:requested.height, imageSize:mode === '2k' ? '2K' : '1K', aspectRatio};
     }
 
     function readExpertGenerationCount() {
@@ -3211,6 +3242,7 @@
         Array.from(sidebar.children).forEach(child => { if (child.id !== 'expert-panel') { child.dataset.expertDisplay = child.style.display; child.style.display = 'none'; } });
         document.getElementById('expert-panel').style.display = 'block';
         loadExpertModels();
+        loadExpertGenerationSettings();
     }
 
     function exitExpertMode() {
@@ -3270,6 +3302,59 @@
             if (result?.error) throw new Error(result.error);
             await loadExpertModels(); setExpertStatus(`模型已删除：${model}`, '#4ec9b0');
         } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    function currentExpertGenerationMode() {
+        return document.querySelector('input[name="expert-generation-mode"]:checked')?.value || 'api';
+    }
+
+    function applyExpertGenerationMode(mode) {
+        const selected = mode || currentExpertGenerationMode();
+        const isWebridge = selected === 'webridge';
+        const block = document.getElementById('expert-api-model-block');
+        const hint = document.getElementById('expert-webridge-hint');
+        const siteSelect = document.getElementById('expert-webridge-site');
+        if (block) block.style.display = isWebridge ? 'none' : '';
+        if (hint) hint.style.display = isWebridge ? 'block' : 'none';
+        if (siteSelect) siteSelect.style.display = isWebridge ? '' : 'none';
+    }
+
+    async function setExpertGenerationMode(mode) {
+        if (!mode) return;
+        try {
+            const raw = await pywebview.api.set_generation_mode(mode);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            applyExpertGenerationMode(result.mode);
+        } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    function onExpertGenerationModeChange(mode) {
+        applyExpertGenerationMode(mode);
+        setExpertGenerationMode(mode);
+    }
+
+    async function setWebridgeSite() {
+        const site = document.getElementById('expert-webridge-site')?.value;
+        if (!site) return;
+        try {
+            const raw = await pywebview.api.set_webridge_site(site);
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+        } catch (error) { setExpertStatus(error.message || String(error), '#f48771'); }
+    }
+
+    async function loadExpertGenerationSettings() {
+        try {
+            const raw = await pywebview.api.get_webridge_settings();
+            const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (result?.error) throw new Error(result.error);
+            const radio = document.querySelector(`input[name="expert-generation-mode"][value="${result.mode || 'api'}"]`);
+            if (radio) radio.checked = true;
+            const siteSelect = document.getElementById('expert-webridge-site');
+            if (siteSelect && result.site && Array.from(siteSelect.options).some(option => option.value === result.site)) siteSelect.value = result.site;
+            applyExpertGenerationMode(result.mode || 'api');
+        } catch (_) {}
     }
 
     function expertSelectionMode() {
@@ -3550,14 +3635,18 @@
         if (expertBusy) { await cancelExpertEdit(); return; }
         if (!canvas) return;
         let prompt = document.getElementById('expert-prompt').value.trim();
+        const generationMode = currentExpertGenerationMode();
         const model = document.getElementById('expert-model').value;
-        if (!model) { setExpertStatus('请选择模型', '#f48771'); return; }
-        if (!prompt) { setExpertStatus(`模型：${model} · 请输入修改描述`, '#f48771'); return; }
+        if (generationMode !== 'webridge' && !model) { setExpertStatus('请选择模型', '#f48771'); return; }
+        const modelLabel = generationMode === 'webridge'
+            ? `WebBridge（${document.getElementById('expert-webridge-site')?.value || 'gemini'}）`
+            : model;
+        if (!prompt) { setExpertStatus(`模型：${modelLabel} · 请输入修改描述`, '#f48771'); return; }
         stopExpertSelectionDrawing();
         const isFullImage = expertEditScope() === 'full';
         const selectionPayload = refreshExpertSelectionPreview();
         if (!isFullImage && !selectionPayload) { setExpertStatus('局部修改请先绘制蒙版', '#f48771'); return; }
-        const outputOptions = isFullImage ? getExpertGenerationOptions(model) : {width:null, height:null, imageSize:null, aspectRatio:null};
+        const outputOptions = isFullImage ? (generationMode === 'webridge' ? getWebridgeOutputOptions() : getExpertGenerationOptions(model)) : {width:null, height:null, imageSize:null, aspectRatio:null};
         let selectionMask = selectionPayload?.maskData || null;
         const sourceImage = exportCurrentCompositeImage();
         let bounds, guides;
@@ -3576,7 +3665,7 @@
         expertBusy = true; expertJobId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         document.getElementById('expert-submit').innerText = '终止生成';
         guides.forEach(guide => { guide.set({stroke:'#00d394',opacity:1}); startAdvancedGuideBreathing(guide); });
-        setExpertStatus(`模型：${model} · 正在生成图片...`, '#dcdcaa'); canvas.requestRenderAll();
+        setExpertStatus(`模型：${modelLabel} · 正在生成图片...`, '#dcdcaa'); canvas.requestRenderAll();
         const jobId = expertJobId;
         try {
             const generationCount = readExpertGenerationCount();
@@ -3793,7 +3882,7 @@
             console.error('[image-edit] expert edit failed', error);
             logExpertDebug('expert-error', {message:error?.message || String(error), stack:error?.stack || ''});
             finishExpertGuideGeneration(guides);
-            setExpertStatus(`模型：${model} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();
+            setExpertStatus(`模型：${modelLabel} · ${error.message || String(error)}`, '#f48771'); canvas.requestRenderAll();
         } finally {
             if (expertJobId === jobId) { expertBusy = false; expertJobId = null; document.getElementById('expert-submit').innerText = '生成图片'; }
         }
@@ -4114,12 +4203,14 @@
         setGlobalPanelsVisible(!globalPanelsVisible);
     }
     function toggleExpertSettings() {
+        if (!expertMode) enterExpertMode();
         const settings = document.getElementById('expert-model-settings');
         if (!settings) return;
         const show = settings.style.display !== 'block';
         settings.style.display = show ? 'block' : 'none';
         const button = document.querySelector('.imgedit-settings-btn');
         if (button) button.classList.toggle('active', show);
+        if (show) loadExpertGenerationSettings();
     }
     async function loadThemeFromBackend() {
         try {

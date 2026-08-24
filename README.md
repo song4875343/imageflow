@@ -87,6 +87,15 @@ python image_eidt/app.py
 - `image_eidt/image_models.json`：图片编辑用 AI 模型列表，字段为 `id / model / provider / baseurl / key`，可在应用内「专家」面板添加、修改、删除。
 - `roomspace/public/models.json`：空间模型列表，字段为 `id / name / width / depth / height / walls / windows / doors / zones / editor / cameraPresets` 等，可在应用内新增、导入、另存或写入系统。
 
+### 生成方式：API 模式 / WebBridge 模式
+
+「图片编辑」面板的设置（齿轮按钮 → 生成方式）支持两种生图途径：
+
+- **API 模式（默认）**：走 `image_models.json` 中配置的图像模型接口。
+- **WebBridge 模式**：通过 [webridge](../webridge) 模块驱动浏览器（Gemini / ChatGPT 站点）完成图文修改，下拉选择站点后生图走 `bridge.run` 流程。
+
+`image_eidt/image_models.json` 中会持久化 `generation_mode`（`api` / `webridge`）与 `webridge_site`（`gemini` / `chatgpt`）两个字段。使用 WebBridge 模式前需启动 webridge 桥接服务（`127.0.0.1:10086`）并确保浏览器已登录对应站点。
+
 ## 技术栈
 
 - 后端：Python 3.9+、pywebview、Pillow、numpy、opencv-python、requests、openai

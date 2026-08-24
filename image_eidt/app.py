@@ -36,6 +36,10 @@ from image_edit import (
     load_image_model_config,
     get_model_config,
     set_current_image_model,
+    load_generation_mode,
+    set_generation_mode,
+    load_webridge_site,
+    set_webridge_site,
 )
 
 
@@ -155,9 +159,7 @@ class ImageEditorAPI:
                     logger.exception("resize source decode failed id=%s", request_id)
                     source = None
             target_size = (
-                source.size
-                if fit_to_source and source is not None
-                else requested_size
+                source.size if fit_to_source and source is not None else requested_size
             )
             resized = image.resize(target_size, Image.Resampling.LANCZOS)
             logger.info(
@@ -239,8 +241,12 @@ class ImageEditorAPI:
         try:
             source_encoded = str(source_image).split(",", 1)[-1]
             image_encoded = str(image_data).split(",", 1)[-1]
-            source = Image.open(io.BytesIO(base64.b64decode(source_encoded))).convert("RGB")
-            image = Image.open(io.BytesIO(base64.b64decode(image_encoded))).convert("RGB")
+            source = Image.open(io.BytesIO(base64.b64decode(source_encoded))).convert(
+                "RGB"
+            )
+            image = Image.open(io.BytesIO(base64.b64decode(image_encoded))).convert(
+                "RGB"
+            )
             target_size = (max(1, int(width)), max(1, int(height)))
             source = source.resize(target_size, Image.Resampling.LANCZOS)
             image = image.resize(target_size, Image.Resampling.LANCZOS)
@@ -257,14 +263,22 @@ class ImageEditorAPI:
                 alpha.getextrema(),
             )
             return json.dumps(
-                {"imageData": encoded_patch, "width": patch.width, "height": patch.height},
+                {
+                    "imageData": encoded_patch,
+                    "width": patch.width,
+                    "height": patch.height,
+                },
                 ensure_ascii=False,
             )
         except Exception as exc:
             logger.exception("patch failed id=%s", request_id)
-            return json.dumps({"error": str(exc), "requestId": request_id}, ensure_ascii=False)
+            return json.dumps(
+                {"error": str(exc), "requestId": request_id}, ensure_ascii=False
+            )
 
-    def create_mask_patch_image_data(self, base_image, source_layer_image, selection_mask):
+    def create_mask_patch_image_data(
+        self, base_image, source_layer_image, selection_mask
+    ):
         """Fuse a positioned source layer into the base only inside an editable mask."""
         request_id = uuid.uuid4().hex[:8]
         logger.info(
@@ -279,7 +293,9 @@ class ImageEditorAPI:
                 io.BytesIO(base64.b64decode(str(value).split(",", 1)[-1]))
             ).convert(mode)
             base = decode(base_image, "RGB")
-            source = decode(source_layer_image, "RGBA").resize(base.size, Image.Resampling.LANCZOS)
+            source = decode(source_layer_image, "RGBA").resize(
+                base.size, Image.Resampling.LANCZOS
+            )
             patch, alignment = confidence_patch_layer(base, source, selection_mask)
             return json.dumps(
                 {
@@ -296,7 +312,9 @@ class ImageEditorAPI:
             )
         except Exception as exc:
             logger.exception("mask patch failed id=%s", request_id)
-            return json.dumps({"error": str(exc), "requestId": request_id}, ensure_ascii=False)
+            return json.dumps(
+                {"error": str(exc), "requestId": request_id}, ensure_ascii=False
+            )
 
     def debug_log(self, event, details=None):
         try:
@@ -380,6 +398,36 @@ class ImageEditorAPI:
         try:
             models = delete_image_model(model)
             return json.dumps({"success": True, "models": models}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def get_webridge_settings(self):
+        try:
+            return json.dumps(
+                {
+                    "mode": load_generation_mode(),
+                    "site": load_webridge_site(),
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def set_generation_mode(self, mode):
+        try:
+            return json.dumps(
+                {"success": True, "mode": set_generation_mode(mode)},
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def set_webridge_site(self, site):
+        try:
+            return json.dumps(
+                {"success": True, "site": set_webridge_site(site)},
+                ensure_ascii=False,
+            )
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
@@ -489,34 +537,36 @@ class ImageEditorAPI:
             mismatch_results = []
             for mismatch_image in exc.images:
                 raw_image = mismatch_image.convert("RGB")
-                mismatch_results.append({
-                    "error": "size_mismatch",
-                    "message": str(exc),
-                    "requested": {
-                        "width": exc.requested_size[0],
-                        "height": exc.requested_size[1],
-                    },
-                    "actual": {
-                        "width": raw_image.width,
-                        "height": raw_image.height,
-                    },
-                    "baseurl": exc.baseurl,
-                    "id": uuid.uuid4().hex,
-                    "assetId": uuid.uuid4().hex,
-                    "target": {"x": x, "y": y, "w": w, "h": h},
-                    "overlay": {
-                        "x": 0,
-                        "y": 0,
-                        "w": raw_image.width,
-                        "h": raw_image.height,
-                    },
-                    "imageData": _data_url(raw_image),
-                    "rawImageData": _data_url(raw_image),
-                    "hasSelectionMask": has_selection_mask,
-                    "submittedModelId": selected_model["id"],
-                    "submittedModel": selected_model["model"],
-                    "submittedProvider": selected_model["provider"],
-                })
+                mismatch_results.append(
+                    {
+                        "error": "size_mismatch",
+                        "message": str(exc),
+                        "requested": {
+                            "width": exc.requested_size[0],
+                            "height": exc.requested_size[1],
+                        },
+                        "actual": {
+                            "width": raw_image.width,
+                            "height": raw_image.height,
+                        },
+                        "baseurl": exc.baseurl,
+                        "id": uuid.uuid4().hex,
+                        "assetId": uuid.uuid4().hex,
+                        "target": {"x": x, "y": y, "w": w, "h": h},
+                        "overlay": {
+                            "x": 0,
+                            "y": 0,
+                            "w": raw_image.width,
+                            "h": raw_image.height,
+                        },
+                        "imageData": _data_url(raw_image),
+                        "rawImageData": _data_url(raw_image),
+                        "hasSelectionMask": has_selection_mask,
+                        "submittedModelId": selected_model["id"],
+                        "submittedModel": selected_model["model"],
+                        "submittedProvider": selected_model["provider"],
+                    }
+                )
             payload = dict(mismatch_results[0])
             if len(mismatch_results) > 1:
                 payload["results"] = mismatch_results
@@ -538,7 +588,9 @@ class ImageEditorAPI:
             parsed = json.loads(models_json)
             if isinstance(parsed, list):
                 parsed = {"models": parsed}
-            if not isinstance(parsed, dict) or not isinstance(parsed.get("models"), list):
+            if not isinstance(parsed, dict) or not isinstance(
+                parsed.get("models"), list
+            ):
                 raise ValueError("模型数据格式错误")
             target = _ROOMSPACE_ROOT / "public" / "models.json"
             target.parent.mkdir(parents=True, exist_ok=True)

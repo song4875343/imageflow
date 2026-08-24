@@ -6,6 +6,9 @@ import base64
 import json
 import os
 import re
+import shutil
+import sys
+import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -68,6 +71,64 @@ PATCH_PROMPT = (
 
 
 UNSET_PROVIDER = "未设置"
+
+WEBRIDGE_SITES = {
+    "gemini": "Gemini",
+    "chatgpt": "ChatGPT",
+}
+DEFAULT_WEBRIDGE_SITE = "gemini"
+
+
+def _webridge_config_payload():
+    try:
+        payload = json.loads(MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(payload, list):
+        payload = {"models": payload}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_webridge_config(payload):
+    if not payload.get("models"):
+        raise ValueError("模型配置中没有可用模型，无法保存生成设置")
+    temporary = MODEL_CONFIG_PATH.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    temporary.replace(MODEL_CONFIG_PATH)
+
+
+def load_generation_mode():
+    mode = str(_webridge_config_payload().get("generation_mode", "api")).strip().lower()
+    return "webridge" if mode == "webridge" else "api"
+
+
+def load_webridge_site():
+    site = (
+        str(_webridge_config_payload().get("webridge_site", DEFAULT_WEBRIDGE_SITE))
+        .strip()
+        .lower()
+    )
+    return site if site in WEBRIDGE_SITES else DEFAULT_WEBRIDGE_SITE
+
+
+def set_generation_mode(mode):
+    normalized = "webridge" if str(mode or "").strip().lower() == "webridge" else "api"
+    payload = _webridge_config_payload()
+    payload["generation_mode"] = normalized
+    _write_webridge_config(payload)
+    return normalized
+
+
+def set_webridge_site(site):
+    normalized = str(site or DEFAULT_WEBRIDGE_SITE).strip().lower()
+    if normalized not in WEBRIDGE_SITES:
+        raise ValueError(f"不支持的 WebBridge 站点: {site}")
+    payload = _webridge_config_payload()
+    payload["webridge_site"] = normalized
+    _write_webridge_config(payload)
+    return normalized
 
 
 def image_model_id(model, provider=UNSET_PROVIDER):
@@ -150,6 +211,14 @@ def save_image_models(models, current_model=None):
         legacy = next((item for item in normalized if item["model"] == selected), None)
         selected = legacy["id"] if legacy else normalized[0]["id"]
     payload = {"current_model": selected, "models": normalized}
+    try:
+        existing = json.loads(MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+        if isinstance(existing, dict):
+            for key in ("generation_mode", "webridge_site"):
+                if key in existing:
+                    payload[key] = existing[key]
+    except (OSError, json.JSONDecodeError):
+        pass
     temporary = MODEL_CONFIG_PATH.with_suffix(".json.tmp")
     temporary.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -521,10 +590,7 @@ def align_generated_to_source(
         sample_x = xs + dx
         sample_y = ys + dy
         valid = (
-            (sample_x >= 0)
-            & (sample_x < width)
-            & (sample_y >= 0)
-            & (sample_y < height)
+            (sample_x >= 0) & (sample_x < width) & (sample_y >= 0) & (sample_y < height)
         )
         if int(np.count_nonzero(valid)) < 64:
             return float("inf")
@@ -825,7 +891,11 @@ def edit_patch_gpt(
     generated_list = generated_list[:count]
     if enforce_requested_size:
         mismatch = next(
-            (generated for generated in generated_list if generated.size != requested_size),
+            (
+                generated
+                for generated in generated_list
+                if generated.size != requested_size
+            ),
             None,
         )
         if mismatch is not None:
@@ -961,8 +1031,153 @@ def edit_patch_legacy(
         if output_size is not None or generation_options is not None:
             normalized_results.append(result)
         else:
-            normalized_results.append(result.resize(image.size, Image.Resampling.LANCZOS))
+            normalized_results.append(
+                result.resize(image.size, Image.Resampling.LANCZOS)
+            )
     return normalized_results
+
+
+class _CancelAdapter:
+    """Adapt the app's cancel_check callable to the threading.Event API used by webridge."""
+
+    def __init__(self, cancel_check):
+        self._check = cancel_check
+
+    def is_set(self):
+        return bool(self._check and self._check())
+
+
+_WEBRIDGE_BRIDGE = None
+
+
+def _import_webridge_bridge():
+    global _WEBRIDGE_BRIDGE
+    if _WEBRIDGE_BRIDGE is not None:
+        return _WEBRIDGE_BRIDGE
+    try:
+        import bridge as _bridge
+
+        _WEBRIDGE_BRIDGE = _bridge
+        return _bridge
+    except ImportError:
+        pass
+    for root in [
+        Path(__file__).resolve().parents[2],
+        Path(__file__).resolve().parents[1],
+    ]:
+        candidate = root / "webridge"
+        if not candidate.is_dir():
+            continue
+        sys.path.insert(0, str(candidate))
+        try:
+            import bridge as _bridge
+
+            _WEBRIDGE_BRIDGE = _bridge
+            return _bridge
+        except ImportError:
+            sys.path.pop(0)
+    raise RuntimeError("未找到 webridge 模块（bridge.py），无法使用 WebBridge 模式")
+
+
+def _webridge_generate(
+    image,
+    prompt,
+    site,
+    cancel_check=None,
+    output_size=None,
+    reference_images=None,
+    count=1,
+):
+    """Generate an edited image through the WebBridge browser flow.
+
+    The image and any reference images are saved to temp PNG files, uploaded to
+    the selected site (Gemini / ChatGPT) via ``bridge.run``, and the downloaded
+    result is loaded back as a Pillow image.
+    """
+    _check_cancelled(cancel_check)
+    bridge = _import_webridge_bridge()
+    pending_images = [image.convert("RGB")]
+    pending_images.extend(
+        reference.convert("RGB") for reference in (reference_images or [])
+    )
+    cancel_adapter = _CancelAdapter(cancel_check)
+    count = max(1, int(count or 1))
+    target_size = tuple(output_size) if output_size else (image.width, image.height)
+    temp_dir = tempfile.mkdtemp(prefix="webridge_edit_")
+    results = []
+    try:
+        image_paths = []
+        for index, pending in enumerate(pending_images):
+            path = os.path.join(temp_dir, f"image-{index}.png")
+            pending.save(path, "PNG")
+            image_paths.append(path)
+        for i in range(count):
+            _check_cancelled(cancel_check)
+            try:
+                out_path = bridge.run(
+                    site,
+                    image_paths,
+                    str(prompt),
+                    cancel_event=cancel_adapter,
+                )
+            except requests.exceptions.ConnectionError as exc:
+                raise RuntimeError(
+                    f"无法连接 WebBridge daemon(127.0.0.1:10086)，请先启动 webridge 服务: {exc}"
+                ) from exc
+            except Exception as exc:
+                raise RuntimeError(f"WebBridge 生图失败: {exc}") from exc
+            if not out_path or not os.path.exists(str(out_path)):
+                raise RuntimeError("WebBridge 未返回生成结果")
+            generated = Image.open(str(out_path)).convert("RGB")
+            if generated.size != target_size:
+                generated = generated.resize(target_size, Image.Resampling.LANCZOS)
+            results.append(generated)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    _check_cancelled(cancel_check)
+    return results
+
+
+def _webridge_edit_patch(
+    image,
+    editable_box,
+    prompt,
+    cancel_check,
+    editable_mask,
+    output_size,
+    reference_images,
+    count,
+):
+    """WebBridge edit dispatcher: full-image or local crop-and-paste."""
+    _check_cancelled(cancel_check)
+    site = load_webridge_site()
+    count = max(1, int(count or 1))
+    if editable_box is not None:
+        x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
+        target = image.crop((x1, y1, x2, y2))
+        generated_list = _webridge_generate(
+            target,
+            prompt,
+            site,
+            cancel_check,
+            reference_images=reference_images,
+            count=count,
+        )
+        return [
+            feather_patch(
+                image, generated, (x1, y1, x2, y2), selection_mask=editable_mask
+            )
+            for generated in generated_list
+        ]
+    return _webridge_generate(
+        image,
+        prompt,
+        site,
+        cancel_check,
+        output_size,
+        reference_images,
+        count,
+    )
 
 
 def edit_patch(
@@ -978,8 +1193,19 @@ def edit_patch(
     count=1,
 ):
     _check_cancelled(cancel_check)
-    config = get_model_config(model)
     count = max(1, int(count or 1))
+    if load_generation_mode() == "webridge":
+        return _webridge_edit_patch(
+            image,
+            editable_box,
+            prompt,
+            cancel_check,
+            editable_mask,
+            output_size,
+            reference_images,
+            count,
+        )
+    config = get_model_config(model)
     if "modelscope.cn" in config["baseurl"].lower():
         if editable_box is not None:
             x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
@@ -1335,14 +1561,10 @@ def _lab_harmonize_patch(patch, target, selection_level=None):
     decay = np.exp(-distance / max(4.0, min(width, height) * 0.08))
     decay = np.maximum(decay, ring.astype(np.float32))[:, :, None]
     corrected = patch_lab.copy()
-    corrected_l = (patch_lab[:, :, 0] - np.median(patch_l)) * gain + np.median(
-        target_l
-    )
+    corrected_l = (patch_lab[:, :, 0] - np.median(patch_l)) * gain + np.median(target_l)
     corrected[:, :, 0] += (corrected_l - patch_lab[:, :, 0]) * decay[:, :, 0]
     corrected[:, :, 1:] += offsets[None, None, 1:] * decay
-    return cv2.cvtColor(
-        np.clip(corrected, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB
-    )
+    return cv2.cvtColor(np.clip(corrected, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
 
 
 def _srgb_to_linear(array):
@@ -1364,9 +1586,7 @@ def _normalized_detail_maps(base_array):
     gray = cv2.cvtColor(base_array, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
     gradient = gradient_image(gray)
     mean = cv2.GaussianBlur(gray, (0, 0), 2.0)
-    variance = np.maximum(
-        cv2.GaussianBlur(gray * gray, (0, 0), 2.0) - mean * mean, 0.0
-    )
+    variance = np.maximum(cv2.GaussianBlur(gray * gray, (0, 0), 2.0) - mean * mean, 0.0)
     texture = np.sqrt(variance)
 
     def normalize(values):
@@ -1390,9 +1610,7 @@ def _inner_alpha(mask_level, radius, edge_map=None):
 
 def blend_color_light(base, patch, box, pixels=FEATHER_PIXELS, selection_mask=None):
     """Lab harmonization + linear-light, edge-aware dual-frequency blending."""
-    base_array, candidate, mask_level = _blend_inputs(
-        base, patch, box, selection_mask
-    )
+    base_array, candidate, mask_level = _blend_inputs(base, patch, box, selection_mask)
     radius = _adaptive_blend_radius(box, pixels, selection_mask)
     edge, _ = _normalized_detail_maps(base_array)
     alpha_low = _inner_alpha(mask_level, radius * 1.8, edge * 0.45)[:, :, None]
@@ -1451,10 +1669,13 @@ def blend_confidence(
         candidate_gray = cv2.cvtColor(candidate_image, cv2.COLOR_RGB2GRAY).astype(
             np.float32
         )
-        gradient_error = np.abs(
-            cv2.Laplacian(candidate_gray, cv2.CV_32F)
-            - cv2.Laplacian(base_gray, cv2.CV_32F)
-        ) / 64.0
+        gradient_error = (
+            np.abs(
+                cv2.Laplacian(candidate_gray, cv2.CV_32F)
+                - cv2.Laplacian(base_gray, cv2.CV_32F)
+            )
+            / 64.0
+        )
         score = np.clip(0.62 * color_error + 0.38 * gradient_error, 0.0, 4.0)
         values = score[ring]
         ring_scores.append(float(np.median(values)) if values.size else 1.0)
@@ -1473,7 +1694,9 @@ def blend_confidence(
     boundary_blend = _inner_alpha(mask_level, radius * 1.25, local_edge * 0.65)
     boundary_blend = cv2.GaussianBlur(boundary_blend, (0, 0), max(1.0, radius * 0.25))
     boundary_blend = np.clip(boundary_blend, 0.0, 1.0)[:, :, None]
-    result = _srgb_to_linear(base_array) * (1.0 - boundary_blend) + weighted * boundary_blend
+    result = (
+        _srgb_to_linear(base_array) * (1.0 - boundary_blend) + weighted * boundary_blend
+    )
     return Image.fromarray(_linear_to_srgb(result), "RGB")
 
 
@@ -1675,9 +1898,7 @@ def generate_correction_overlay(
             count=count,
         )
     results = []
-    for source_index, generated_context in enumerate(
-        generated_context_list, start=1
-    ):
+    for source_index, generated_context in enumerate(generated_context_list, start=1):
         aligned_context, alignment = align_generated_to_source(
             context, generated_context, context_mask, return_info=True
         )

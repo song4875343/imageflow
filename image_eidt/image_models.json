@@ -29,5 +29,6 @@
       "baseurl": "http://127.0.0.1:8045/v1",
       "key": "sk-23d3453d5efb42ec9ea3ada74f38a41b"
     }
-  ]
+  ],
+  "generation_mode": "webridge"
 }
