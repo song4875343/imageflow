@@ -4322,8 +4322,9 @@
         const values = document.getElementById('size-mismatch-values');
         values.innerHTML = `要求尺寸：<b>${requested.width || 0}×${requested.height || 0}</b><br>返回尺寸：<b>${actual.width || 0}×${actual.height || 0}</b><br>宽高比差异：<b>${(ratioError * 100).toFixed(2)}%</b>`;
         const recommendation = document.getElementById('size-mismatch-recommendation');
+        const targetLabel = result.fullImage ? '主图尺寸' : '设置尺寸';
         recommendation.innerText = recommendedChoice === 'resize'
-            ? `${result.hasSelectionMask ? '已检测到蒙版，' : ''}宽高比差异不超过 1%，建议强制缩放到设置尺寸后重新按蒙版合成。`
+            ? `${result.hasSelectionMask ? '已检测到蒙版，' : ''}宽高比差异不超过 1%，建议强制缩放到${targetLabel}后重新合成。`
             : `${result.hasSelectionMask ? '已检测到蒙版，' : ''}宽高比差异超过 1%，强制缩放可能造成拉伸，建议放弃并重新生成。`;
         const labels = {actual:'使用返回尺寸', resize:'强制缩放一致', abandon:'放弃'};
         Object.entries(labels).forEach(([choice, label]) => {

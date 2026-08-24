@@ -19,3 +19,6 @@ Thumbs.db
 *.log
 temp/
 tmp/
+
+# WebBridge 下载产物
+webridge/downloads/

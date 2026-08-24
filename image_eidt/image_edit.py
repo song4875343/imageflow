@@ -3,7 +3,9 @@ try:
 except ImportError:
     OpenAI = None
 import base64
+import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -795,12 +797,17 @@ def edit_patch_gpt(
     output_size=None,
     reference_images=None,
     count=1,
+    reference_size=None,
 ):
     """Edit with a GPT-image model, returning a list of ``count`` images.
 
     GPT-image endpoints accept an ``n`` parameter so several images can be
     generated in one request; when the endpoint rejects or ignores ``n`` we
     fall back to repeated single-image requests.
+
+    ``reference_size`` overrides the size used for mismatch enforcement with
+    the untouched source (main image), so responses that do not match it raise
+    ``OutputSizeMismatch``. Full-image edits pass the main image size here.
     """
     _check_cancelled(cancel_check)
     config = get_model_config(model)
@@ -809,7 +816,8 @@ def edit_patch_gpt(
         if output_size
         else aligned_gpt_output_size(image.size)
     )
-    enforce_requested_size = output_size is not None
+    enforce_size = tuple(reference_size) if reference_size else requested_size
+    enforce_requested_size = output_size is not None or reference_size is not None
     client = _model_client(config)
     source = image.convert("RGB")
     mask = gpt_edit_mask(source, editable_box, editable_mask)
@@ -894,14 +902,14 @@ def edit_patch_gpt(
             (
                 generated
                 for generated in generated_list
-                if generated.size != requested_size
+                if generated.size != enforce_size
             ),
             None,
         )
         if mismatch is not None:
             raise OutputSizeMismatch(
                 mismatch,
-                requested_size,
+                enforce_size,
                 mismatch.size,
                 config["baseurl"],
                 images=generated_list,
@@ -927,6 +935,7 @@ def edit_patch_legacy(
     reference_images=None,
     generation_options=None,
     count=1,
+    reference_size=None,
 ):
     _check_cancelled(cancel_check)
     config = get_model_config(model)
@@ -1014,21 +1023,29 @@ def edit_patch_legacy(
         if len(results) == before:
             raise ValueError("legacy endpoint response did not contain an image")
     results = results[:count]
-    if "gemini" in config["model"].lower() and generation_options:
+    enforce_size = tuple(reference_size) if reference_size else None
+    if enforce_size is None:
+        if "gemini" in config["model"].lower() and generation_options:
+            enforce_size = expected_output_size
+    if enforce_size is not None:
         mismatch = next(
-            (result for result in results if result.size != expected_output_size), None
+            (result for result in results if result.size != enforce_size), None
         )
         if mismatch is not None:
             raise OutputSizeMismatch(
                 mismatch,
-                expected_output_size,
+                enforce_size,
                 mismatch.size,
                 config["baseurl"],
                 images=results,
             )
     normalized_results = []
     for result in results:
-        if output_size is not None or generation_options is not None:
+        if (
+            output_size is not None
+            or generation_options is not None
+            or reference_size is not None
+        ):
             normalized_results.append(result)
         else:
             normalized_results.append(
@@ -1054,29 +1071,67 @@ def _import_webridge_bridge():
     global _WEBRIDGE_BRIDGE
     if _WEBRIDGE_BRIDGE is not None:
         return _WEBRIDGE_BRIDGE
-    try:
-        import bridge as _bridge
-
-        _WEBRIDGE_BRIDGE = _bridge
-        return _bridge
-    except ImportError:
-        pass
-    for root in [
-        Path(__file__).resolve().parents[2],
-        Path(__file__).resolve().parents[1],
-    ]:
-        candidate = root / "webridge"
-        if not candidate.is_dir():
+    candidates = [
+        Path(__file__).resolve().parents[1] / "webridge" / "bridge.py",
+        Path(__file__).resolve().parents[2] / "webridge" / "bridge.py",
+    ]
+    for candidate in candidates:
+        if not candidate.is_file():
             continue
-        sys.path.insert(0, str(candidate))
-        try:
-            import bridge as _bridge
-
-            _WEBRIDGE_BRIDGE = _bridge
-            return _bridge
-        except ImportError:
-            sys.path.pop(0)
+        spec = importlib.util.spec_from_file_location(
+            "image_webridge_bridge", candidate
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["image_webridge_bridge"] = module
+        if spec.loader is None:
+            continue
+        spec.loader.exec_module(module)
+        _WEBRIDGE_BRIDGE = module
+        return module
     raise RuntimeError("未找到 webridge 模块（bridge.py），无法使用 WebBridge 模式")
+
+
+def _webridge_prompt(prompt, size):
+    width, height = (int(size[0]), int(size[1]))
+    return (
+        f"{str(prompt).strip()}\n"
+        f"要求：生成尺寸 {width}×{height}（主图尺寸），宽高比 {_simplest_aspect_ratio(width, height)}，质量：高。"
+    )
+
+
+def _simplest_aspect_ratio(width, height):
+    """Reduce width:height to a simple ratio, snapped to common ratios when close.
+
+    Examples: 1920×1080 -> 16:9, 1408×768 -> 16:9, 1024×1024 -> 1:1.
+    """
+    width, height = int(width), int(height)
+    if width <= 0 or height <= 0:
+        return "1:1"
+    ratio = width / height
+    common = [
+        (16, 9),
+        (9, 16),
+        (4, 3),
+        (3, 4),
+        (3, 2),
+        (2, 3),
+        (1, 1),
+        (21, 9),
+        (9, 21),
+        (5, 4),
+        (4, 5),
+    ]
+    best = None
+    best_error = 0.04
+    for rw, rh in common:
+        error = abs((rw / rh) / ratio - 1.0)
+        if error < best_error:
+            best_error = error
+            best = (rw, rh)
+    if best is not None:
+        return f"{best[0]}:{best[1]}"
+    divisor = math.gcd(width, height)
+    return f"{width // divisor}:{height // divisor}"
 
 
 def _webridge_generate(
@@ -1092,17 +1147,20 @@ def _webridge_generate(
 
     The image and any reference images are saved to temp PNG files, uploaded to
     the selected site (Gemini / ChatGPT) via ``bridge.run``, and the downloaded
-    result is loaded back as a Pillow image.
+    result is loaded back as a Pillow image. The prompt is appended with the
+    image's own size / aspect ratio / quality, and the result is normalized to
+    that size (the browser sites have no explicit size parameters).
     """
     _check_cancelled(cancel_check)
     bridge = _import_webridge_bridge()
+    webridge_prompt = _webridge_prompt(prompt, image.size)
     pending_images = [image.convert("RGB")]
     pending_images.extend(
         reference.convert("RGB") for reference in (reference_images or [])
     )
     cancel_adapter = _CancelAdapter(cancel_check)
     count = max(1, int(count or 1))
-    target_size = tuple(output_size) if output_size else (image.width, image.height)
+    target_size = (image.width, image.height)
     temp_dir = tempfile.mkdtemp(prefix="webridge_edit_")
     results = []
     try:
@@ -1117,8 +1175,9 @@ def _webridge_generate(
                 out_path = bridge.run(
                     site,
                     image_paths,
-                    str(prompt),
+                    webridge_prompt,
                     cancel_event=cancel_adapter,
+                    anchor=str(prompt),
                 )
             except requests.exceptions.ConnectionError as exc:
                 raise RuntimeError(
@@ -1191,6 +1250,7 @@ def edit_patch(
     reference_images=None,
     generation_options=None,
     count=1,
+    reference_size=None,
 ):
     _check_cancelled(cancel_check)
     count = max(1, int(count or 1))
@@ -1231,6 +1291,23 @@ def edit_patch(
             reference_images,
             count=count,
         )
+        if reference_size is not None:
+            mismatch = next(
+                (
+                    generated
+                    for generated in generated_list
+                    if generated.size != tuple(reference_size)
+                ),
+                None,
+            )
+            if mismatch is not None:
+                raise OutputSizeMismatch(
+                    mismatch,
+                    reference_size,
+                    mismatch.size,
+                    config["baseurl"],
+                    images=generated_list,
+                )
         results = []
         for generated in generated_list:
             if output_size is not None:
@@ -1249,6 +1326,7 @@ def edit_patch(
             output_size,
             reference_images,
             count,
+            reference_size,
         )
     return edit_patch_legacy(
         image,
@@ -1260,6 +1338,7 @@ def edit_patch(
         reference_images,
         generation_options,
         count,
+        reference_size,
     )
 
 
@@ -1763,6 +1842,7 @@ def generate_correction_overlay(
             reference_images=reference_images,
             generation_options=generation_options,
             count=count,
+            reference_size=page.size,
         )
         results = []
         full_box = (0, 0, page.width, page.height)
@@ -1844,6 +1924,7 @@ def generate_correction_overlay(
             reference_images=reference_images,
             generation_options=generation_options,
             count=count,
+            reference_size=page.size,
         )
         return [
             (

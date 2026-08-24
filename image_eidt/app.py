@@ -562,6 +562,7 @@ class ImageEditorAPI:
                         "imageData": _data_url(raw_image),
                         "rawImageData": _data_url(raw_image),
                         "hasSelectionMask": has_selection_mask,
+                        "fullImage": bool(full_image_edit),
                         "submittedModelId": selected_model["id"],
                         "submittedModel": selected_model["model"],
                         "submittedProvider": selected_model["provider"],

@@ -92,7 +92,7 @@ python image_eidt/app.py
 「图片编辑」面板的设置（齿轮按钮 → 生成方式）支持两种生图途径：
 
 - **API 模式（默认）**：走 `image_models.json` 中配置的图像模型接口。
-- **WebBridge 模式**：通过 [webridge](../webridge) 模块驱动浏览器（Gemini / ChatGPT 站点）完成图文修改，下拉选择站点后生图走 `bridge.run` 流程。
+- **WebBridge 模式**：通过本仓库内 `webridge/` 模块（`webridge/bridge.py`）驱动浏览器（Gemini / ChatGPT 站点）完成图文修改，下拉选择站点后生图走 `bridge.run` 流程。
 
 `image_eidt/image_models.json` 中会持久化 `generation_mode`（`api` / `webridge`）与 `webridge_site`（`gemini` / `chatgpt`）两个字段。使用 WebBridge 模式前需启动 webridge 桥接服务（`127.0.0.1:10086`）并确保浏览器已登录对应站点。
 
