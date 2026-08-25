@@ -187,20 +187,26 @@ def chatgpt_send(session):
     return click_js("button[data-testid='send-button']", session)
 
 
-def chatgpt_pick_new_gen(session, text):
-    # 以我的文本提示所在用户消息为锚点，取其之后的助手回复生成图；
-    # 复用会话时历史图片也符合 src 特征，必须按消息顺序而非"不在 before 里"来筛选
+def _count_selector(session, selector):
+    r = evaluate(
+        f"(() => document.querySelectorAll({json.dumps(selector)}).length)()", session
+    )
+    try:
+        return int(r["data"]["value"])
+    except Exception:
+        return -1
+
+
+def chatgpt_pick_new_gen(session, n0):
+    # 发送前记录用户消息数 n0；发送后只认新增的最后一条用户消息为锚点，
+    # 取紧随其后的生成图。不做任何文本比对，彻底摆脱渲染改写导致的不匹配。
     code = f"""(() => {{
       const users = Array.from(document.querySelectorAll('[data-message-author-role="user"]'));
-      let anchor = null;
-      for (let i = users.length - 1; i >= 0; i--) {{
-        if ((users[i].textContent || '').includes({json.dumps(text)})) {{ anchor = users[i]; break; }}
-      }}
-      if (!anchor) return JSON.stringify({{ err: 'no matching user msg' }});
-      let started = false;
+      if ({json.dumps(n0)} < 0 || users.length <= {json.dumps(n0)}) return JSON.stringify({{ pending: true }});
+      const anchor = users[users.length - 1];
       const imgs = Array.from(document.querySelectorAll('main img'));
       for (const img of imgs) {{
-        if (!started) {{ started = (img === anchor || anchor.contains(img)); continue; }}
+        if (!(anchor.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
         const src = img.src || img.getAttribute('src') || '';
         const alt = img.alt || '';
         if (src.includes('estuary') && alt.startsWith('Generated image')) {{
@@ -219,19 +225,11 @@ def chatgpt_pick_new_gen(session, text):
         return None
 
 
-def download_via_fetch(src, session):
-    # 图片 URL 带鉴权，必须在页面内用浏览器 fetch 下载，再以 base64 返回
-    code = f"""(async () => {{
-      const resp = await fetch({json.dumps(src)}, {{ credentials: 'include' }});
-      if (!resp.ok) return JSON.stringify({{ err: resp.status }});
-      const buf = await resp.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let bin = '';
-      const CHUNK = 0x8000;
-      for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-      return JSON.stringify({{ ok: true, len: bytes.length, mime: resp.headers.get('content-type') || '', b64: btoa(bin) }});
-    }})()"""
-    r = evaluate(code, session)
+def _store_and_fetch_b64(store_code, session):
+    # 大图 base64 可达数 MB，单次 evaluate 响应会超出守护进程上限被丢弃（返回空体）；
+    # 先在页面里把 base64 存入 window.__wb_b64，再分块小请求取回。
+    # 返回 (b64, meta) 或 None
+    r = evaluate(store_code, session)
     try:
         val = json.loads(r["data"]["value"])
     except Exception:
@@ -239,7 +237,60 @@ def download_via_fetch(src, session):
     if not val.get("ok"):
         print(f"[download] failed: {val}")
         return None
-    return save_image(val["b64"], val.get("mime") or "image/png")
+    total = val["len"]
+    CHUNK = 256 * 1024
+    parts = []
+    try:
+        for off in range(0, total, CHUNK):
+            r = evaluate(f"window.__wb_b64.slice({off}, {off + CHUNK})", session)
+            part = r["data"]["value"]
+            if not isinstance(part, str):
+                raise RuntimeError(f"chunk at {off} missing")
+            parts.append(part)
+            print(
+                f"[download] fetched chunk {len(parts)} ({min(off + CHUNK, total)}/{total})"
+            )
+    finally:
+        evaluate("(() => { delete window.__wb_b64; return ''; })()", session)
+    b64 = "".join(parts)
+    if len(b64) != total:
+        print(f"[download] size mismatch: got {len(b64)}, want {total}")
+        return None
+    return b64, val
+
+
+def download_via_fetch(src, session):
+    # 图片 URL 带鉴权，必须在页面内用浏览器 fetch 下载。Gemini 全尺寸 URL 走 fife 的
+    # alr=yes 近似重定向：请求返回 text/plain 文本，内容是下一段地址，需逐跳跟随直到
+    # 拿到真实图片字节（实测 2 跳后为 image/jpeg 原图）。base64 经 window 变量分块取回
+    code = f"""(async () => {{
+      let url = {json.dumps(src)};
+      let type = '';
+      for (let hop = 0; hop < 8; hop++) {{
+        const resp = await fetch(url, {{ credentials: 'include' }});
+        if (!resp.ok) return JSON.stringify({{ err: resp.status, hop }});
+        type = resp.headers.get('content-type') || '';
+        const buf = await resp.arrayBuffer();
+        if (type.includes('text/plain') && buf.byteLength < 4096) {{
+          const text = new TextDecoder().decode(buf).trim();
+          if (/^https?:\\/\\//.test(text)) {{ url = text; continue; }}
+          return JSON.stringify({{ err: 'bad redirect', type, len: buf.byteLength, hop }});
+        }}
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        window.__wb_b64 = btoa(bin);
+        return JSON.stringify({{ ok: true, len: window.__wb_b64.length, mime: type }});
+      }}
+      return JSON.stringify({{ err: 'too many hops' }});
+    }})()"""
+    got = _store_and_fetch_b64(code, session)
+    if not got:
+        return None
+    b64, val = got
+    mime = val.get("mime") or "image/jpeg"
+    return save_image(b64, mime)
 
 
 def save_image(b64, mime, dest_dir=OUT_DIR):
@@ -524,23 +575,20 @@ def gemini_send(session, manual_wait=180, cancel_event=None):
     return None
 
 
-def gemini_pick_new_gen(session, text):
-    # Gemini 生成图 blob URL 且 alt 含 "ai generated"；必须以我的文本提示所在轮为锚点，
-    # 只取其后的助手回复里的图，避免把历史轮(复用会话)的老图当新图返回
+def gemini_pick_new_gen(session, n0):
+    # 发送前记录用户消息数 n0；发送后只认新增的最后一条用户消息为锚点，
+    # 取紧随其后的生成图（blob URL 且 alt 含 "ai generated"），不做文本比对。
     code = f"""(() => {{
       const users = Array.from(document.querySelectorAll('.user-query-container'));
-      let anchor = null;
-      for (let i = users.length - 1; i >= 0; i--) {{
-        if ((users[i].textContent || '').includes({json.dumps(text)})) {{ anchor = users[i]; break; }}
-      }}
-      if (!anchor) return JSON.stringify({{ err: 'no matching user msg' }});
-      let started = false;
+      if ({json.dumps(n0)} < 0 || users.length <= {json.dumps(n0)}) return JSON.stringify({{ pending: true }});
+      const anchor = users[users.length - 1];
       const imgs = Array.from(document.querySelectorAll('main img'));
       for (const img of imgs) {{
-        if (!started) {{ started = (img === anchor || anchor.contains(img)); continue; }}
+        if (!(anchor.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
         const src = img.src || '';
         const alt = (img.alt || '').toLowerCase();
-        if (src.startsWith('blob:') && alt.includes('ai generated')) {{
+        // 大图时 Gemini 用持久 https URL（lh3/gg-dl），小图用 blob:，两种都要认
+        if ((src.startsWith('blob:') || src.startsWith('http')) && alt.includes('ai generated')) {{
           return JSON.stringify({{ src, alt: img.alt, cls: (img.className || '').toString(), w: img.naturalWidth }});
         }}
       }}
@@ -557,7 +605,8 @@ def gemini_pick_new_gen(session, text):
 
 
 def download_via_canvas(src, session):
-    # Gemini 生成图是 blob: URL，fetch 可能失败；改用 canvas 绘制后 toDataURL 导出
+    # Gemini 生成图 blob: URL fetch 可能失败；用 canvas 绘制后 toDataURL 导出，
+    # base64 经 window 变量分块取回（大图单次响应会被守护进程丢弃）
     code = f"""(async () => {{
       const img = Array.from(document.querySelectorAll('main img')).find(i => i.src === {json.dumps(src)});
       if (!img) return JSON.stringify({{ err: 'img gone' }});
@@ -565,18 +614,170 @@ def download_via_canvas(src, session):
       const c = document.createElement('canvas');
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
-      const data = c.toDataURL('image/png');
-      return JSON.stringify({{ ok: true, len: data.length, mime: 'image/png', b64: data.split(',')[1] }});
+      window.__wb_b64 = c.toDataURL('image/png').split(',')[1];
+      return JSON.stringify({{ ok: true, len: window.__wb_b64.length, mime: 'image/png' }});
     }})()"""
-    r = evaluate(code, session)
+    got = _store_and_fetch_b64(code, session)
+    if not got:
+        return None
+    b64, val = got
+    return save_image(b64, val.get("mime") or "image/png")
+
+
+def _frame_id(session):
+    r = webbridge_cmd(
+        "cdp", {"method": "Page.getFrameTree", "params": {}}, session=session
+    )
     try:
-        val = json.loads(r["data"]["value"])
+        return r["data"]["frameTree"]["frame"]["id"]
     except Exception:
         return None
-    if not val.get("ok"):
-        print(f"[download] failed: {val}")
+
+
+def download_via_network(src, session):
+    # lh3/googleusercontent 等持久 https 生成图页面内 fetch 会被 CORS 拦、canvas 会被污染；
+    # 用 CDP Network.loadNetworkResource 借浏览器身份（含会话 Cookie）直接拉取资源，
+    # 响应体经 stream -> IO.read 分块取回，天然绕过 CORS/认证限制
+    fid = _frame_id(session)
+    if not fid:
+        print("[download] cannot resolve frame id")
         return None
-    return save_image(val["b64"], val.get("mime") or "image/png")
+    print(f"[download] https source, loading via CDP network ({src[:50]}…)")
+    r = webbridge_cmd(
+        "cdp",
+        {
+            "method": "Network.loadNetworkResource",
+            "params": {
+                "url": src,
+                "options": {"disableCache": True, "includeCredentials": True},
+                "frameId": fid,
+            },
+        },
+        session=session,
+    )
+    res = (r.get("data") or {}).get("resource") or {}
+    if not res.get("success") or res.get("httpStatusCode") != 200:
+        print(f"[download] loadNetworkResource failed: {res.get('httpStatusCode')}")
+        return None
+    handle = res.get("stream")
+    mime = (res.get("headers") or {}).get("content-type") or "image/jpeg"
+    parts = []
+    while handle:
+        rr = webbridge_cmd(
+            "cdp", {"method": "IO.read", "params": {"handle": handle}}, session=session
+        )
+        data = rr.get("data") or {}
+        chunk = data.get("data") or ""
+        if chunk:
+            parts.append(
+                base64.b64decode(chunk) if data.get("base64Encoded") else chunk.encode()
+            )
+        if data.get("eof"):
+            break
+    raw = b"".join(parts)
+    if not raw:
+        print("[download] empty body")
+        return None
+    path = os.path.join(OUT_DIR, f"generated_{int(time.time())}.jpg")
+    os.makedirs(OUT_DIR, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(raw)
+    print(f"[download] saved {path} ({len(raw)} bytes, {mime})")
+    return path
+
+
+def gemini_download_legacy(src, session):
+    # 大图时 Gemini 用持久 https URL（走 CDP 网络拉取），小图用 blob:（canvas 导出）
+    if src.startswith("blob:"):
+        return download_via_canvas(src, session)
+    return download_via_network(src, session)
+
+
+def _install_download_capture(session):
+    # 在页面里挂钩子，拦截生成图的下载动作取回全尺寸 URL，
+    # 并 cancel 掉浏览器真实的落盘下载（我们要自己拉取而不是存进用户下载目录）
+    code = """(() => {
+      window.__wb_dl = null;
+      const cap = (url) => { if (url && !window.__wb_dl) window.__wb_dl = url; };
+      const isImgUrl = (u) => /gg-dl|googleusercontent|(png|jpe?g|webp)(\\?|$)/i.test(u || '');
+      document.addEventListener('click', (e) => {
+        const a = e.target && e.target.closest ? e.target.closest('a[download]') : null;
+        if (a && a.href) {
+          if (isImgUrl(a.href)) cap(a.href);
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+      const origOpen = window.open;
+      window.open = function (u, ...rest) {
+        if (typeof u === 'string' && isImgUrl(u)) {
+          cap(u);
+          return null;
+        }
+        return origOpen ? origOpen.apply(this, [u, ...rest]) : null;
+      };
+      const origFetch = window.fetch;
+      window.fetch = function (...args) {
+        try {
+          const u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+          if (isImgUrl(u)) cap(u);
+        } catch (_) {}
+        return origFetch.apply(this, args);
+      };
+      return JSON.stringify({ hooked: true });
+    })()"""
+    return evaluate(code, session)
+
+
+def _click_image_download(session, src):
+    # 以生成图 img 为锚向祖先容器逐层找“下载”按钮，扩图片时按钮在卡片右上角的操作区
+    code = """(() => {
+      const img = Array.from(document.querySelectorAll('main img')).find(i => (i.src || '') === __SRC__);
+      if (!img) return JSON.stringify({ err: 'img gone' });
+      let card = img;
+      for (let depth = 0; card && card !== document.body && depth < 8; depth++, card = card.parentElement) {
+        const btn = Array.from(card.querySelectorAll('button')).find(b => /download|下载/i.test((b.getAttribute('aria-label') || '') + '|' + (b.getAttribute('title') || '') + '|' + (b.getAttribute('data-tooltip') || '') + '|' + (b.innerText || '')));
+        if (btn) { btn.click(); return JSON.stringify({ clicked: true, label: (btn.getAttribute('aria-label') || btn.innerText || '').slice(0, 40) }); }
+      }
+      return JSON.stringify({ err: 'no download button' });
+    })()"""
+    return evaluate(code.replace("__SRC__", json.dumps(src)), session)
+
+
+def gemini_download_full(src, session):
+    # 优先点图片右上角的下载按钮拿全尺寸图；拿不到时回退旧路径
+    try:
+        _install_download_capture(session)
+        r = _click_image_download(session, src)
+        print(
+            f"[download] image download button: {json.dumps(r.get('data') or {}, ensure_ascii=False)[:200]}"
+        )
+        href = None
+        start = time.time()
+        while time.time() - start < 15:
+            try:
+                val = evaluate("window.__wb_dl", session)["data"]["value"]
+                if isinstance(val, str) and val:
+                    href = val
+                    break
+            except Exception:
+                pass
+            time.sleep(0.5)
+        print(f"[download] full-res url captured: {(href or '')[:100]}")
+        if not href:
+            print("[download] no full-res url, fallback to legacy download")
+            return gemini_download_legacy(src, session)
+        out = download_via_fetch(href, session)
+        if out:
+            return out
+        return download_via_network(href, session)
+    except Exception as exc:
+        print(f"[download] full-res download failed ({exc}), fallback to legacy")
+        return gemini_download_legacy(src, session)
+
+
+def gemini_download(src, session):
+    return gemini_download_full(src, session)
 
 
 # ============ 流程编排 ============
@@ -593,6 +794,7 @@ SITES = {
         "fill": chatgpt_fill_text,
         "send": chatgpt_send,
         "pick_new_gen": chatgpt_pick_new_gen,
+        "user_selector": '[data-message-author-role="user"]',
         "download": download_via_fetch,
     },
     "gemini": {
@@ -606,22 +808,23 @@ SITES = {
         "fill": gemini_fill_text,
         "send": gemini_send,
         "pick_new_gen": gemini_pick_new_gen,
-        "download": download_via_canvas,
+        "user_selector": ".user-query-container",
+        "download": gemini_download,
     },
 }
 
 
-def wait_for_generation(site, session, text, timeout=300, cancel_event=None):
+def wait_for_generation(site, session, n0, timeout=300, cancel_event=None):
     pick = SITES[site]["pick_new_gen"]
     start = time.time()
     while time.time() - start < timeout:
         if cancel_event is not None and cancel_event.is_set():
             print("[wait] cancelled by user")
             return None
-        gen = pick(session, text)
+        gen = pick(session, n0)
         if gen:
             print(
-                f"[wait] new image ready under my prompt: {(gen.get('alt') or '')[:40]}"
+                f"[wait] new image ready after user message: {(gen.get('alt') or '')[:40]}"
             )
             return gen
         time.sleep(5)
@@ -629,23 +832,22 @@ def wait_for_generation(site, session, text, timeout=300, cancel_event=None):
     return None
 
 
-def run(site, image_paths, text, manual_wait=180, cancel_event=None, anchor=None):
+def run(site, image_paths, text, manual_wait=180, cancel_event=None):
     print("[cfg] DAEMON_URL =", DAEMON_URL)
     print("[cfg] IMAGE_PATH  =", IMAGE_PATH)
     print("[cfg] TEXT        =", TEXT)
     print("[cfg] OUT_DIR     =", OUT_DIR)
     if isinstance(image_paths, str):
         image_paths = [image_paths]
-    print("[cfg] 本次实际使用 image_paths =", image_paths)
+    image_paths = [p for p in (image_paths or []) if p and os.path.exists(p)]
+    text_only = not image_paths
+    print(
+        "[cfg] 本次实际使用 image_paths =",
+        image_paths,
+        "(纯文生图)" if text_only else "",
+    )
     cfg = SITES[site]
     session = cfg["session"]
-    # 定位生成图时按 anchor 匹配用户消息，可区别于实际发送的 text：
-    # 发送给 AI 的提示词可能被追加尺寸等信息，而页面中显示的文本未必能精确匹配，故单独指定锚点文本
-    anchor = anchor or text
-    if anchor != text:
-        print(
-            f"[cfg] anchor 文本与发送文本不同：anchor 长度 {len(anchor)}，发送文本长度 {len(text)}"
-        )
 
     # 优先复用已控制的标签页（不重新导航刷新）；find_tab 仅匹配本会话打开的标签页
     cfg["pre_navigate"](session)
@@ -671,16 +873,25 @@ def run(site, image_paths, text, manual_wait=180, cancel_event=None, anchor=None
             print(f"[main] {site} page not ready, abort")
             return
 
-    cfg["reset"](session)
-    # 页面就绪到上传之间留 1 秒，等 React 挂好文件输入的事件处理器，避免合成 change 被丢弃
-    time.sleep(1.0)
-    cfg["upload"](session, image_paths)
-    cfg["after_upload"](session)
-    # Gemini 转圈期间发送按钮半透明，等它变实色即上传完成（比写死 sleep 更快更稳）
-    if site == "gemini" and not gemini_wait_upload_done(session):
-        print("[main] upload not ready, continuing with 1s grace anyway")
-    time.sleep(1.0)
+    # 这行好像没啥用
+    # cfg["reset"](session)
+
+    if text_only:
+        print(f"[main] 未提供图片，跳过上传，直接文生图")
+    else:
+        # 页面就绪到上传之间留 1 秒，等 React 挂好文件输入的事件处理器，避免合成 change 被丢弃
+        time.sleep(1.0)
+        cfg["upload"](session, image_paths)
+        cfg["after_upload"](session)
+        # Gemini 转圈期间发送按钮半透明，等它变实色即上传完成（比写死 sleep 更快更稳）
+        if site == "gemini" and not gemini_wait_upload_done(session):
+            print("[main] upload not ready, continuing with 1s grace anyway")
+        time.sleep(1.0)
     cfg["fill"](session, text)
+
+    # 发送前记录用户消息数，发送后据此定位"本次新消息"的位置来抓图，不做文本比对
+    n0 = _count_selector(session, cfg["user_selector"])
+    print(f"[main] 发送前用户消息数 = {n0}")
 
     send = cfg["send"]
     if site == "gemini":
@@ -691,7 +902,7 @@ def run(site, image_paths, text, manual_wait=180, cancel_event=None, anchor=None
         print("[main] message not sent, abort")
         return
 
-    gen = wait_for_generation(site, session, anchor, cancel_event=cancel_event)
+    gen = wait_for_generation(site, session, n0, cancel_event=cancel_event)
     if not gen:
         print("[main] no generated image to download")
         return None

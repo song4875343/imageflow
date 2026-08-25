@@ -1177,7 +1177,6 @@ def _webridge_generate(
                     image_paths,
                     webridge_prompt,
                     cancel_event=cancel_adapter,
-                    anchor=str(prompt),
                 )
             except requests.exceptions.ConnectionError as exc:
                 raise RuntimeError(
