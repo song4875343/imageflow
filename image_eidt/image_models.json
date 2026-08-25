@@ -30,5 +30,6 @@
       "key": "sk-23d3453d5efb42ec9ea3ada74f38a41b"
     }
   ],
-  "generation_mode": "webridge"
+  "generation_mode": "webridge",
+  "webridge_site": "chatgpt"
 }

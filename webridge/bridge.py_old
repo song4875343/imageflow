@@ -2,7 +2,6 @@ import argparse
 import base64
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -210,8 +209,7 @@ def chatgpt_pick_new_gen(session, n0):
         if (!(anchor.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
         const src = img.src || img.getAttribute('src') || '';
         const alt = img.alt || '';
-        const isGen = alt.startsWith('Generated image') || alt.startsWith('已生成图片');
-        if (src.includes('estuary') && isGen) {{
+        if (src.includes('estuary') && alt.startsWith('Generated image')) {{
           return JSON.stringify({{ src, alt, cls: (img.className || '').toString(), w: img.naturalWidth }});
         }}
       }}
@@ -259,27 +257,6 @@ def _store_and_fetch_b64(store_code, session):
         print(f"[download] size mismatch: got {len(b64)}, want {total}")
         return None
     return b64, val
-
-
-def _chatgpt_fullsize_url(src):
-    # 实测生成图 img.src 即全尺寸 estuary URL，与图片右下角“分享→下载”按钮实际
-    # 请求的地址一致（仅差 v=0 查询参数）；缺 v 参数时补上 v=0 对齐官方下载行为。
-    # 不走弹窗路径：小视口下该弹窗整体渲染在屏幕外且合成事件无法关闭，会卡死后续任务
-    if re.search(r"[?&]v=\d+", src or ""):
-        return src
-    return src + ("&" if "?" in src else "?") + "v=0"
-
-
-def chatgpt_download_full(src, session):
-    # 页面内 fetch 全尺寸原图；失败再按原 src 兜底一次
-    url = _chatgpt_fullsize_url(src)
-    if url != src:
-        print("[download] appended v=0 for full-size fetch")
-    try:
-        return download_via_fetch(url, session)
-    except Exception as exc:
-        print(f"[download] full-size fetch failed ({exc}), retry with raw src")
-        return download_via_fetch(src, session)
 
 
 def download_via_fetch(src, session):
@@ -818,7 +795,7 @@ SITES = {
         "send": chatgpt_send,
         "pick_new_gen": chatgpt_pick_new_gen,
         "user_selector": '[data-message-author-role="user"]',
-        "download": chatgpt_download_full,
+        "download": download_via_fetch,
     },
     "gemini": {
         "url": "https://gemini.google.com/app",
