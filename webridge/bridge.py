@@ -627,26 +627,6 @@ def gemini_pick_new_gen(session, n0):
         return None
 
 
-def download_via_canvas(src, session):
-    # Gemini 生成图 blob: URL fetch 可能失败；用 canvas 绘制后 toDataURL 导出，
-    # base64 经 window 变量分块取回（大图单次响应会被守护进程丢弃）
-    code = f"""(async () => {{
-      const img = Array.from(document.querySelectorAll('main img')).find(i => i.src === {json.dumps(src)});
-      if (!img) return JSON.stringify({{ err: 'img gone' }});
-      for (let t = 0; t < 10 && !(img.complete && img.naturalWidth); t++) await new Promise(r => setTimeout(r, 500));
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
-      window.__wb_b64 = c.toDataURL('image/png').split(',')[1];
-      return JSON.stringify({{ ok: true, len: window.__wb_b64.length, mime: 'image/png' }});
-    }})()"""
-    got = _store_and_fetch_b64(code, session)
-    if not got:
-        return None
-    b64, val = got
-    return save_image(b64, val.get("mime") or "image/png")
-
-
 def _frame_id(session):
     r = webbridge_cmd(
         "cdp", {"method": "Page.getFrameTree", "params": {}}, session=session
@@ -709,24 +689,84 @@ def download_via_network(src, session):
     return path
 
 
-def gemini_download_legacy(src, session):
-    # 大图时 Gemini 用持久 https URL（走 CDP 网络拉取），小图用 blob:（canvas 导出）
-    if src.startswith("blob:"):
-        return download_via_canvas(src, session)
-    return download_via_network(src, session)
+FULL_MIN_SIDE = 900  # Gemini 原图短边 >=1024，会话预览小图远小于此
+
+
+def _image_min_side(path):
+    # 纯解析 PNG/JPEG 文件头拿像素尺寸（不引第三方依赖）；解析不了返回 None
+    try:
+        with open(path, "rb") as f:
+            head = f.read(65536)
+        if head[:8] == b"\x89PNG\r\n\x1a\n":
+            w = int.from_bytes(head[16:20], "big")
+            h = int.from_bytes(head[20:24], "big")
+            return min(w, h)
+        if head[:2] == b"\xff\xd8":
+            i = 2
+            while i + 9 < len(head):
+                if head[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = head[i + 1]
+                if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                    i += 2
+                    continue
+                seglen = int.from_bytes(head[i + 2 : i + 4], "big")
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    h = int.from_bytes(head[i + 5 : i + 7], "big")
+                    w = int.from_bytes(head[i + 7 : i + 9], "big")
+                    return min(w, h)
+                i += 2 + seglen
+    except Exception:
+        pass
+    return None
+
+
+def _probe_dims(url, session):
+    # 页面内 new Image() 读 naturalWidth/naturalHeight 探测候选 URL 的真实像素；
+    # 只读尺寸不画 canvas，不受跨域污染限制。探测失败返回 None（按未知处理，
+    # 不能作为采纳依据）
+    code = f"""(async () => {{
+      const d = await new Promise((resolve) => {{
+        const im = new Image();
+        im.onload = () => resolve({{ w: im.naturalWidth, h: im.naturalHeight }});
+        im.onerror = () => resolve(null);
+        setTimeout(() => resolve(null), 8000);
+        im.src = {json.dumps(url)};
+      }});
+      return JSON.stringify(d || {{ err: 'probe failed' }});
+    }})()"""
+    try:
+        val = json.loads(evaluate(code, session)["data"]["value"])
+    except Exception:
+        return None
+    if not isinstance(val, dict) or "w" not in val:
+        return None
+    try:
+        return int(val["w"]), int(val["h"])
+    except Exception:
+        return None
 
 
 def _install_download_capture(session):
-    # 在页面里挂钩子，拦截生成图的下载动作取回全尺寸 URL，
-    # 并 cancel 掉浏览器真实的落盘下载（我们要自己拉取而不是存进用户下载目录）
+    # 在页面里挂钩子，拦截生成图的下载动作取回全尺寸 URL，并 cancel 掉浏览器
+    # 真实的落盘下载（我们要自己拉取而不是存进用户下载目录）。
+    # 所有来源的候选全部去重记录，谁是真的全尺寸交给像素探测判断——URL 形状
+    # 不可靠：预览图可能不带缩放参数、原图可能走 XHR 或 blob:，先到先得必错。
+    # a[download] 的 href 无条件捕获（含 blob:，那是 Gemini 自己准备好的成品）；
+    # fetch/open/XHR 只记图片 CDN 的 URL（blob 太杂会淹没候选列表）
     code = """(() => {
-      window.__wb_dl = null;
-      const cap = (url) => { if (url && !window.__wb_dl) window.__wb_dl = url; };
+      window.__wb_dls = [];
+      const cap = (url, kind) => {
+        if (!url) return;
+        const u = String(url);
+        if (!window.__wb_dls.some(c => c.u === u)) window.__wb_dls.push({ u, k: kind });
+      };
       const isImgUrl = (u) => /gg-dl|googleusercontent|(png|jpe?g|webp)(\\?|$)/i.test(u || '');
       document.addEventListener('click', (e) => {
         const a = e.target && e.target.closest ? e.target.closest('a[download]') : null;
         if (a && a.href) {
-          if (isImgUrl(a.href)) cap(a.href);
+          cap(a.href, 'anchor');
           e.preventDefault();
           e.stopImmediatePropagation();
         }
@@ -734,7 +774,7 @@ def _install_download_capture(session):
       const origOpen = window.open;
       window.open = function (u, ...rest) {
         if (typeof u === 'string' && isImgUrl(u)) {
-          cap(u);
+          cap(u, 'soft');
           return null;
         }
         return origOpen ? origOpen.apply(this, [u, ...rest]) : null;
@@ -743,9 +783,16 @@ def _install_download_capture(session):
       window.fetch = function (...args) {
         try {
           const u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
-          if (isImgUrl(u)) cap(u);
+          if (isImgUrl(u)) cap(u, 'soft');
         } catch (_) {}
         return origFetch.apply(this, args);
+      };
+      const origXhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (m, u, ...rest) {
+        try {
+          if (typeof u === 'string' && isImgUrl(u)) cap(u, 'soft');
+        } catch (_) {}
+        return origXhrOpen.apply(this, [m, u, ...rest]);
       };
       return JSON.stringify({ hooked: true });
     })()"""
@@ -768,35 +815,75 @@ def _click_image_download(session, src):
 
 
 def gemini_download_full(src, session):
-    # 优先点图片右上角的下载按钮拿全尺寸图；拿不到时回退旧路径
+    # 只走全尺寸路径，且以真实像素为准：点图片右上角下载按钮 → 捕获候选 URL →
+    # 页面内探测每个候选的分辨率，短边 >= FULL_MIN_SIDE 才准下载；落盘后再解析
+    # 文件头终审，不达标删文件视为失败。不达标就一直等/补点按钮直到超时返回
+    # None——宁可失败也不交小图
+
+    def ordered_urls(cands):
+        # anchor（a[download] 点击）最可信，同类取最新捕获优先
+        return [c["u"] for c in reversed(cands) if c.get("k") == "anchor"] + [
+            c["u"] for c in reversed(cands) if c.get("k") == "soft"
+        ]
+
     try:
         _install_download_capture(session)
         r = _click_image_download(session, src)
         print(
             f"[download] image download button: {json.dumps(r.get('data') or {}, ensure_ascii=False)[:200]}"
         )
+        probed = {}
         href = None
         start = time.time()
-        while time.time() - start < 15:
+        next_click = start + 15
+        while time.time() - start < 60:
             try:
-                val = evaluate("window.__wb_dl", session)["data"]["value"]
-                if isinstance(val, str) and val:
-                    href = val
-                    break
+                val = evaluate("JSON.stringify(window.__wb_dls || [])", session)[
+                    "data"
+                ]["value"]
+                cands = json.loads(val) if isinstance(val, str) and val else []
             except Exception:
-                pass
+                cands = []
+            for u in ordered_urls(cands):
+                if u not in probed:
+                    d = _probe_dims(u, session)
+                    probed[u] = d
+                    print(f"[download] probe {(u or '')[:80]} -> {d}")
+                    if d and min(d) >= FULL_MIN_SIDE:
+                        href = u
+                        break
+            if href:
+                break
+            # 图片卡片刚生成时下载按钮可能尚未挂好导致点击落空，定期补点
+            if time.time() > next_click:
+                next_click += 15
+                print("[download] no full-res candidate yet, re-click download button")
+                _click_image_download(session, src)
             time.sleep(0.5)
-        print(f"[download] full-res url captured: {(href or '')[:100]}")
+        print(f"[download] full-res url picked: {(href or '')[:100]}")
         if not href:
-            print("[download] no full-res url, fallback to legacy download")
-            return gemini_download_legacy(src, session)
-        out = download_via_fetch(href, session)
-        if out:
+            print("[download] 未捕获达到全尺寸标准的 URL（小图兜底已禁用），放弃")
+            return None
+        # 同一个全尺寸 URL 的两种传输通道（页面 fetch / CDP 网络），不是换图源；
+        # 落盘后按文件头尺寸终审，短边不达标删掉当失败
+        for fetcher in (download_via_fetch, download_via_network):
+            out = fetcher(href, session)
+            if not out:
+                continue
+            side = _image_min_side(out)
+            if side is not None and side < FULL_MIN_SIDE:
+                print(f"[download] 文件仅 {side}px < {FULL_MIN_SIDE}px，丢弃")
+                try:
+                    os.remove(out)
+                except OSError:
+                    pass
+                continue
             return out
-        return download_via_network(href, session)
+        print("[download] 全尺寸下载终审未通过，放弃")
+        return None
     except Exception as exc:
-        print(f"[download] full-res download failed ({exc}), fallback to legacy")
-        return gemini_download_legacy(src, session)
+        print(f"[download] 全尺寸下载失败：{exc}")
+        return None
 
 
 def gemini_download(src, session):

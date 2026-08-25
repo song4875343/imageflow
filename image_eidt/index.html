@@ -33,7 +33,7 @@
         
         .sidebar-btn { height:32px; min-height:32px; box-sizing:border-box; background:#0e639c; color:white; border:none; padding:0 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; }
         .sidebar-btn.secondary { background: #333; border: 1px solid #555; color: #ccc; }
-        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn):not(.generation-eye):not(.generation-compare-toggle):not(.generation-fine-tune) { height:32px; min-height:32px; box-sizing:border-box; }
+        button:not(.reference-add):not(.reference-remove):not(.composer-add-btn):not(.composer-image-remove):not(.preview-add-btn):not(.generation-eye):not(.generation-compare-toggle):not(.generation-fine-tune):not(.preview-brush-mode) { height:32px; min-height:32px; box-sizing:border-box; }
         .sidebar-btn:hover { filter: brightness(1.05); }
         .expert-field { width:100%; box-sizing:border-box; padding:8px; background:#1f1f1f; color:#eee; border:1px solid #555; border-radius:4px; font:inherit; }
         .expert-icon-btn { width:32px; min-width:32px; height:32px; padding:0; font-size:16px; line-height:1; }
@@ -112,21 +112,31 @@
         .edit-scope-option { display:flex; align-items:center; justify-content:center; gap:4px; height:32px; min-height:32px; box-sizing:border-box; border:1px solid #555; border-radius:5px; background:#333; cursor:pointer; font-size:11px; }
         .edit-scope-option:has(input:checked) { border-color:#4aa3df; background:#173b54; color:#fff; }
         .reference-order-note { margin-top:7px; padding:7px 8px; border-left:2px solid #4aa3df; color:#8e98a3; background:#24282c; font-size:11px; line-height:1.5; }
-        #preview-selection-toolbar { position:absolute; left:50%; bottom:calc(12.5vh + 40px); transform:translateX(-50%); z-index:300; width:max-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid #50545a; border-radius:12px; background:rgba(37,39,42,.96); box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); }
+        #preview-selection-toolbar { position:absolute; left:calc(50% + 156px); bottom:calc(12.5vh + 40px); transform:translateX(-50%); z-index:300; width:max-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid #50545a; border-radius:12px; background:rgba(37,39,42,.96); box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); }
         #preview-selection-toolbar[hidden] { display:none; }
         .annotation-colors { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; }
-        .annotation-color { width:28px; min-width:28px; height:28px !important; min-height:28px !important; aspect-ratio:1; flex:0 0 28px; padding:0; border:3px solid transparent; border-radius:50%; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.12); }
+        .annotation-color { width:22px; min-width:22px; height:22px !important; min-height:22px !important; aspect-ratio:1; flex:0 0 22px; padding:0; border:2.5px solid transparent; border-radius:50%; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.12); }
         .annotation-color.is-active { border-color:#d9dde1; transform:scale(1.12); }
         .layer-actions { display:flex; align-items:center; justify-content:center; gap:7px; flex-wrap:wrap; }
         .layer-action { min-width:60px; height:32px; padding:0 9px; box-sizing:border-box; border:1px solid #555; border-radius:7px; color:#e5e7eb; background:#34363a; cursor:pointer; font-size:11px; }
         .layer-action:hover { border-color:#6aafda; background:#3d4248; }
         .layer-action.danger:hover { border-color:#d65f5f; background:#512d2d; }
         .layer-action.is-active { border-color:#0e639c; background:#0e639c; color:#fff; }
+        .layer-action.icon-btn { min-width:32px; width:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+        .layer-action.icon-btn svg { width:16px; height:16px; display:block; pointer-events:none; }
+        .annotation-action.icon-btn svg { width:15px; height:15px; }
         .annotation-action { display:flex; align-items:center; gap:5px; }
-        .preview-brush-size-row { display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.12); color:#cbd2d9; font-size:11px; }
+        .preview-brush-size-row { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12); color:#000; font-size:11px; }
         .preview-brush-size-row[hidden] { display:none; }
-        .preview-brush-size-row label { min-width:58px; }
-        .preview-brush-size-row input { width:150px; accent-color:#4aa3df; }
+        .preview-brush-size-row label { color:#000; white-space:nowrap; }
+        .preview-brush-size-row label span { font-weight:600; }
+        .preview-brush-size-row input { width:128px; accent-color:#1f5a45; }
+        .preview-brush-mode-group { display:flex; align-items:center; gap:4px; }
+        .preview-brush-mode-group[hidden] { display:none; }
+        .preview-brush-mode { width:20px; min-width:20px; height:20px; padding:0; box-sizing:border-box; font-size:10.5px; border:1px solid rgba(0,0,0,.28); background:#fff; color:#000; border-radius:4px; cursor:pointer; transition:background .12s,border-color .12s,color .12s; display:inline-flex; align-items:center; justify-content:center; }
+        .preview-brush-mode svg { width:13px; height:13px; display:block; pointer-events:none; }
+        .preview-brush-mode:hover { border-color:#1f5a45; background:rgba(31,90,69,.08); }
+        .preview-brush-mode.is-active { background:#1f5a45; border-color:#1f5a45; color:#fff; }
         .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
         .save-choice-overlay[hidden] { display:none; }
         .save-choice-panel { width:330px; max-width:calc(100% - 32px); padding:18px; box-sizing:border-box; border:1px solid #555b62; border-radius:12px; background:#292b2f; box-shadow:0 18px 55px rgba(0,0,0,.55); color:#e6e9ed; }
@@ -586,17 +596,23 @@
             <button class="annotation-color" style="background:#c7c7c7" data-color="#c7c7c7" onclick="setAnnotationColor('#c7c7c7')"></button>
         </div>
         <div class="layer-actions">
-            <button class="layer-action danger" onclick="deleteSelectedPreviewLayer()">删除</button>
-            <button class="layer-action" onclick="setSelectedLayerAsMain()">置为主图</button>
-            <button id="annotation-brush-button" class="layer-action annotation-action" onclick="startAnnotationBrush()">✎ 画笔</button>
-            <button id="mask-paint-button" class="layer-action annotation-action" hidden onclick="startMaskBrush('add')">＋ 涂抹</button>
-            <button id="mask-erase-button" class="layer-action annotation-action" hidden onclick="startMaskBrush('subtract')">− 橡皮擦</button>
-            <button id="mask-patch-button" class="layer-action annotation-action" hidden onclick="startMaskPatchSourceSelection()">▣ 生成补丁</button>
-            <button id="annotation-text-button" class="layer-action annotation-action" onclick="addAnnotationText()">T 文字</button>
-            <button id="annotation-marker-button" class="layer-action annotation-action" onclick="toggleAnnotationMarker()">● 标记</button>
-            <button class="layer-action" onclick="openSaveChoiceDialog()">保存</button>
+            <button class="layer-action icon-btn danger" title="删除" aria-label="删除" onclick="deleteSelectedPreviewLayer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/><path d="M10 11v6M14 11v6"/></svg></button>
+            <button class="layer-action icon-btn" title="置为主图" aria-label="置为主图" onclick="setSelectedLayerAsMain()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/></svg></button>
+            <button id="annotation-brush-button" class="layer-action icon-btn annotation-action" title="画笔" aria-label="画笔" onclick="startAnnotationBrush()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.07"/><path d="M9.06 11.9c-2.3.7-4.2 2.6-4.9 4.9-.4 1.4-1.5 2.5-2.9 2.9 1 .8 2.3 1.3 3.7 1.3 3.2 0 5.8-2.6 5.8-5.8 0-1.4-.5-2.7-1.3-3.7z"/></svg></button>
+            <button id="mask-paint-button" class="layer-action icon-btn annotation-action" title="涂抹（增加蒙版）" aria-label="涂抹" hidden onclick="startMaskBrush('add')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c2.5-1.2 4-3.8 4.5-6.5.3-1.8 1.2-3 2.5-3.5-1.5-1-3.7-.6-5 .9-2 2.3-2.6 6-2 9.1z" fill="currentColor" stroke="none"/><path d="M14 6h6M17 3v6" stroke-width="2"/></svg></button>
+            <button id="mask-erase-button" class="layer-action icon-btn annotation-action" title="橡皮擦（消减蒙版）" aria-label="橡皮擦" hidden onclick="startMaskBrush('subtract')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3.6 15.1a1.5 1.5 0 0 1 0-2.1L13 3.6a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L13 18.5"/><path d="M6.5 10.5l7 7"/></svg></button>
+            <button id="mask-patch-button" class="layer-action icon-btn annotation-action" title="生成补丁" aria-label="生成补丁" hidden onclick="startMaskPatchSourceSelection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3.4 2.6"/><path d="M12 9.5v5M9.5 12h5"/></svg></button>
+            <button id="annotation-text-button" class="layer-action icon-btn annotation-action" title="文字" aria-label="文字" onclick="addAnnotationText()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4.5h14V6"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
+            <button id="annotation-marker-button" class="layer-action icon-btn annotation-action" title="标记" aria-label="标记" onclick="toggleAnnotationMarker()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
+            <button class="layer-action icon-btn" title="保存" aria-label="保存" onclick="openSaveChoiceDialog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
         </div>
         <div id="preview-brush-size-row" class="preview-brush-size-row" hidden>
+            <div id="preview-brush-mode-group" class="preview-brush-mode-group" hidden>
+                <button type="button" class="preview-brush-mode is-active" data-kind="scribble" title="涂鸦" aria-label="涂鸦" onclick="setAnnotationBrushKind('scribble')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-kind="pline" title="PLINE线（左击加点，Ctrl+左击闭合，右击结束）" aria-label="PLINE线" onclick="setAnnotationBrushKind('pline')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 18l6-9 5 4 4-7"/><circle cx="5" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="13" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-kind="rect" title="矩形" aria-label="矩形" onclick="setAnnotationBrushKind('rect')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-kind="arrow" title="箭头（两次点击：起点→终点）" aria-label="箭头" onclick="setAnnotationBrushKind('arrow')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h13"/><path d="M12 6.5L17.5 12 12 17.5"/></svg></button>
+            </div>
             <label for="preview-brush-size">线宽 <span id="preview-brush-size-value">8</span> px</label>
             <input id="preview-brush-size" type="range" min="1" max="160" value="8" oninput="updatePreviewBrushSize(this.value)">
         </div>
@@ -697,6 +713,14 @@
     let maskPatchSelection = null;
     let maskPatchBusy = false;
     let previewBrushSize = 8;
+    let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
+    let plinePoints = [];        // PLINE 已确认节点
+    let plinePreview = null;     // PLINE 预览线
+    let plineStartDot = null;    // PLINE 起点提示圆点
+    let rectDraft = null;        // 矩形拖拽起点 {x,y}
+    let rectPreview = null;      // 矩形预览框
+    let arrowStart = null;       // 箭头起点（第一次点击）
+    let arrowPreview = null;     // 箭头预览
     let sizeMismatchResolver = null;
     let annotationMarkerNumber = 1;
     const annotationPreviewId = 'annotation-layer';
@@ -957,6 +981,7 @@
         if (input && Number(input.value) !== previewBrushSize) input.value = String(previewBrushSize);
         if (label) label.innerText = Math.round(previewBrushSize);
         if (canvas?.freeDrawingBrush && (annotationMode === 'brush' || maskBrushMode)) canvas.freeDrawingBrush.width = previewBrushSize;
+        syncAnnotationDraftStyle();
     }
 
     function updatePreviewToolbar() {
@@ -971,6 +996,8 @@
         document.getElementById('mask-patch-button')?.classList.toggle('is-active', Boolean(maskPatchSelection));
         const sizeRow = document.getElementById('preview-brush-size-row');
         if (sizeRow) sizeRow.hidden = !isBrush;
+        const modeGroup = document.getElementById('preview-brush-mode-group');
+        if (modeGroup) modeGroup.hidden = annotationMode !== 'brush';
         document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
     }
 
@@ -1581,6 +1608,7 @@
         annotationColor = color;
         document.querySelectorAll('.annotation-color').forEach(button => button.classList.toggle('is-active', button.dataset.color === color));
         if (canvas?.freeDrawingBrush && annotationMode === 'brush') canvas.freeDrawingBrush.color = color;
+        syncAnnotationDraftStyle();
     }
 
     function updateAnnotationActionButtons() {
@@ -1592,12 +1620,66 @@
     function stopAnnotationMode() {
         if (!canvas) return;
         annotationMode = null;
+        cancelAnnotationShapeDraft();
+        setAnnotationTargetsInteractive(true);
         canvas.isDrawingMode = false;
         canvas.selection = true;
         canvas.defaultCursor = 'default';
         updateAnnotationMarkerButton();
         updateAnnotationActionButtons();
         updatePreviewToolbar();
+    }
+
+    function annotationShapeKind() {
+        return (annotationMode === 'brush' && ['pline', 'rect', 'arrow'].includes(annotationBrushKind)) ? annotationBrushKind : null;
+    }
+
+    function setAnnotationTargetsInteractive(interactive) {
+        if (!canvas) return;
+        canvas.getObjects().forEach(object => { if (object.data?.type === 'annotation') object.evented = interactive; });
+    }
+
+    function applyAnnotationBrushToolState(statusText) {
+        const kind = annotationShapeKind();
+        canvas.discardActiveObject();
+        cancelAnnotationShapeDraft();
+        canvas.selection = false;
+        if (kind) {
+            canvas.isDrawingMode = false;
+            canvas.defaultCursor = 'crosshair';
+            setAnnotationTargetsInteractive(false);
+        } else {
+            if (!canvas.freeDrawingBrush) {
+                canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                canvas.freeDrawingBrush.color = annotationColor;
+                canvas.freeDrawingBrush.width = previewBrushSize;
+            }
+            canvas.freeDrawingBrush.color = annotationColor;
+            canvas.freeDrawingBrush.width = previewBrushSize;
+            canvas.isDrawingMode = true;
+            canvas.defaultCursor = 'crosshair';
+            setAnnotationTargetsInteractive(true);
+        }
+        updatePreviewToolbar();
+        updateAnnotationActionButtons();
+        if (statusText) setExpertStatus(statusText, '#4ec9b0');
+    }
+
+    function annotationBrushKindHint(kind) {
+        return {
+            scribble: '涂鸦画笔：按住左键自由绘制',
+            pline: 'PLINE线：左击加节点，Ctrl+左击闭合，右击结束',
+            rect: '矩形：按住左键拖拽绘制',
+            arrow: '箭头：第一次点击定起点，第二次点击定终点'
+        }[kind] || '';
+    }
+
+    function setAnnotationBrushKind(kind) {
+        if (!['scribble', 'pline', 'rect', 'arrow'].includes(kind)) return;
+        annotationBrushKind = kind;
+        document.querySelectorAll('.preview-brush-mode').forEach(button => button.classList.toggle('is-active', button.dataset.kind === kind));
+        if (!canvas || annotationMode !== 'brush') return;
+        applyAnnotationBrushToolState(annotationBrushKindHint(kind));
     }
 
     function startAnnotationBrush() {
@@ -1607,15 +1689,210 @@
         stopExpertSelectionDrawing();
         stopAnnotationMode();
         annotationMode = 'brush';
-        canvas.discardActiveObject();
-        canvas.selection = false;
-        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-        canvas.freeDrawingBrush.color = annotationColor;
-        canvas.freeDrawingBrush.width = previewBrushSize;
-        canvas.isDrawingMode = true;
-        updateAnnotationActionButtons();
-        updatePreviewToolbar();
-        setExpertStatus('标记画笔已开启，直接在主图上绘制', '#4ec9b0');
+        applyAnnotationBrushToolState(annotationBrushKindHint(annotationBrushKind));
+    }
+
+    function cancelAnnotationShapeDraft() {
+        if (!canvas) return;
+        if (plinePreview) { canvas.remove(plinePreview); plinePreview = null; }
+        if (plineStartDot) { canvas.remove(plineStartDot); plineStartDot = null; }
+        if (rectPreview) { canvas.remove(rectPreview); rectPreview = null; }
+        if (arrowPreview) { canvas.remove(arrowPreview); arrowPreview = null; }
+        plinePoints = [];
+        rectDraft = null;
+        arrowStart = null;
+        canvas.requestRenderAll();
+    }
+
+    function syncAnnotationDraftStyle() {
+        if (!canvas) return;
+        if (plinePreview) { plinePreview.set({stroke:annotationColor, strokeWidth:previewBrushSize}); }
+        if (plineStartDot) {
+            plineStartDot.set({fill:annotationColor, radius:Math.max(3, previewBrushSize / 2 + 1)});
+        }
+        if (rectPreview) { rectPreview.set({stroke:annotationColor, strokeWidth:previewBrushSize}); }
+        canvas.requestRenderAll();
+    }
+
+    function ensureAnnotationPlineStartDot() {
+        const point = plinePoints[0];
+        if (!point) return;
+        if (!plineStartDot) {
+            plineStartDot = new fabric.Circle({
+                left:point.x, top:point.y, originX:'center', originY:'center',
+                radius:Math.max(3, previewBrushSize / 2 + 1), fill:annotationColor,
+                stroke:'rgba(255,255,255,.9)', strokeWidth:1.5, selectable:false, evented:false
+            });
+            canvas.add(plineStartDot);
+        }
+    }
+
+    function refreshAnnotationPlinePreview(cursor) {
+        const pts = plinePoints.map(p => ({x:p.x, y:p.y}));
+        if (cursor && pts.length) pts.push({x:cursor.x, y:cursor.y});
+        if (plinePreview) { canvas.remove(plinePreview); plinePreview = null; }
+        if (pts.length >= 2) {
+            plinePreview = new fabric.Polyline(pts, {
+                stroke:annotationColor, strokeWidth:previewBrushSize, fill:null, opacity:.78,
+                strokeLineCap:'round', strokeLineJoin:'round', strokeDashArray:[7,5],
+                selectable:false, evented:false
+            });
+            canvas.add(plinePreview);
+        }
+        canvas.requestRenderAll();
+    }
+
+    function addAnnotationPlinePoint(pointer) {
+        const point = clampPointToSlide(pointer);
+        plinePoints.push(point);
+        ensureAnnotationPlineStartDot();
+        refreshAnnotationPlinePreview(null);
+    }
+
+    function updateAnnotationPlinePreview(cursor) {
+        if (!plinePoints.length) return;
+        refreshAnnotationPlinePreview(clampPointToSlide(cursor));
+    }
+
+    function finishAnnotationPline(closed) {
+        if (!canvas) return;
+        const points = plinePoints.map(p => ({x:p.x, y:p.y}));
+        if (closed ? points.length < 3 : points.length < 2) {
+            if (points.length) setExpertStatus(closed ? '节点不足 3 个，无法闭合' : '节点不足 2 个，未生成线条', '#dcdcaa');
+            cancelAnnotationShapeDraft();
+            return;
+        }
+        const options = {
+            stroke:annotationColor, strokeWidth:previewBrushSize, fill:null,
+            strokeLineCap:'round', strokeLineJoin:'round'
+        };
+        const shape = closed ? new fabric.Polygon(points, options) : new fabric.Polyline(points, options);
+        shape.set({
+            selectable:true, evented:!annotationShapeKind(),
+            data:{type:'annotation', annotationKind:'pline', closed:Boolean(closed), id:Date.now()}
+        });
+        cancelAnnotationShapeDraft();
+        canvas.add(shape);
+        reorderLayers();
+        updateAnnotationLayerPreview();
+        canvas.requestRenderAll();
+        setExpertStatus(closed ? 'PLINE线已闭合' : 'PLINE线已结束，可继续绘制下一段', '#4ec9b0');
+    }
+
+    function beginAnnotationRectDraft(pointer) {
+        const point = clampPointToSlide(pointer);
+        rectDraft = {x:point.x, y:point.y};
+        rectPreview = new fabric.Rect({
+            left:point.x, top:point.y, width:0, height:0,
+            fill:'rgba(255,255,255,.01)', stroke:annotationColor, strokeWidth:previewBrushSize,
+            opacity:.85, strokeDashArray:[7,5], selectable:false, evented:false
+        });
+        canvas.add(rectPreview);
+    }
+
+    function updateAnnotationRectDraft(pointer) {
+        if (!rectDraft || !rectPreview) return;
+        const point = clampPointToSlide(pointer);
+        const w = Math.abs(point.x - rectDraft.x);
+        const h = Math.abs(point.y - rectDraft.y);
+        rectPreview.set({
+            width:w, height:h,
+            left:point.x < rectDraft.x ? point.x : rectDraft.x,
+            top:point.y < rectDraft.y ? point.y : rectDraft.y
+        });
+        canvas.requestRenderAll();
+    }
+
+    function finishAnnotationRectDraft() {
+        if (!canvas || !rectDraft) return;
+        const preview = rectPreview;
+        rectPreview = null;
+        rectDraft = null;
+        if (!preview) return;
+        const w = preview.getScaledWidth();
+        const h = preview.getScaledHeight();
+        if (w < 5 || h < 5) {
+            canvas.remove(preview);
+            canvas.requestRenderAll();
+            return;
+        }
+        const rect = new fabric.Rect({
+            left:preview.left, top:preview.top, width:w, height:h,
+            fill:null, stroke:annotationColor, strokeWidth:previewBrushSize,
+            strokeLineJoin:'round'
+        });
+        rect.set({
+            selectable:true, evented:!annotationShapeKind(),
+            data:{type:'annotation', annotationKind:'rect', id:Date.now()}
+        });
+        canvas.remove(preview);
+        canvas.add(rect);
+        reorderLayers();
+        updateAnnotationLayerPreview();
+        canvas.requestRenderAll();
+        setExpertStatus('矩形标注已生成', '#4ec9b0');
+    }
+
+    function buildAnnotationArrow(start, end, draft) {
+        // 成熟标注箭头画法（同 PowerPoint/常见标注库）：
+        // 单条 Path = 线身(描边) + 实心三角头(填充)，共用同一中轴线，天然对齐居中。
+        // 头部大小与线宽、两点距离成比例：随线宽增大，且不超过线长的 45%。
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const len = Math.hypot(dx, dy);
+        const ux = len ? dx / len : 0;
+        const uy = len ? dy / len : 0;
+        const headLen = Math.min(Math.max(previewBrushSize * 3, 16), Math.max(8, len * .45));
+        const headWidth = headLen * .9;
+        const tip = {x:end.x, y:end.y};
+        const baseCenter = {x:end.x - ux * headLen, y:end.y - uy * headLen};
+        const shaftEnd = {x:end.x - ux * headLen * .65, y:end.y - uy * headLen * .65};
+        const px = -uy;
+        const py = ux;
+        const b1 = {x:baseCenter.x + px * headWidth / 2, y:baseCenter.y + py * headWidth / 2};
+        const b2 = {x:baseCenter.x - px * headWidth / 2, y:baseCenter.y - py * headWidth / 2};
+        const f = n => Number(n.toFixed(2));
+        const d = `M ${f(start.x)} ${f(start.y)} L ${f(shaftEnd.x)} ${f(shaftEnd.y)}`
+            + ` M ${f(b1.x)} ${f(b1.y)} L ${f(tip.x)} ${f(tip.y)} L ${f(b2.x)} ${f(b2.y)} Z`;
+        return new fabric.Path(d, {
+            fill:annotationColor, stroke:annotationColor, strokeWidth:previewBrushSize,
+            strokeLineCap:'round', strokeLineJoin:'round',
+            opacity:draft ? .8 : 1, selectable:!draft, evented:!draft && !annotationShapeKind()
+        });
+    }
+
+    function beginAnnotationArrowDraft(pointer) {
+        arrowStart = clampPointToSlide(pointer);
+        arrowPreview = buildAnnotationArrow(arrowStart, arrowStart, true);
+        canvas.add(arrowPreview);
+        canvas.requestRenderAll();
+    }
+
+    function updateAnnotationArrowDraft(cursor) {
+        if (!arrowStart) return;
+        if (arrowPreview) { canvas.remove(arrowPreview); arrowPreview = null; }
+        arrowPreview = buildAnnotationArrow(arrowStart, clampPointToSlide(cursor), true);
+        canvas.add(arrowPreview);
+        canvas.requestRenderAll();
+    }
+
+    function finishAnnotationArrow(endPointer) {
+        if (!canvas || !arrowStart) return;
+        const start = arrowStart;
+        const end = clampPointToSlide(endPointer || start);
+        if (Math.hypot(end.x - start.x, end.y - start.y) < 6) {
+            cancelAnnotationShapeDraft();
+            setExpertStatus('箭头太短，未生成', '#dcdcaa');
+            return;
+        }
+        const arrow = buildAnnotationArrow(start, end, false);
+        arrow.set({data:{type:'annotation', annotationKind:'arrow', id:Date.now()}});
+        cancelAnnotationShapeDraft();
+        canvas.add(arrow);
+        reorderLayers();
+        updateAnnotationLayerPreview();
+        canvas.requestRenderAll();
+        setExpertStatus('箭头标注已生成，可继续绘制下一个', '#4ec9b0');
     }
 
     function maskPreviewEntry() {
@@ -1710,7 +1987,7 @@
     function updateAnnotationMarkerButton() {
         const button = document.getElementById('annotation-marker-button');
         if (!button) return;
-        button.innerText = annotationMode === 'marker' ? '↺ 归零' : '● 标记';
+        button.title = annotationMode === 'marker' ? '归零：清除所有标记编号' : '标记';
         updateAnnotationActionButtons();
     }
 
@@ -2052,6 +2329,7 @@
             preserveObjectStacking: true,
             selectionKey: 'ctrlKey',
             fireMiddleClick: true,  // 【关键修改】开启中键响应
+            fireRightClick: true,   // PLINE线：右击结束绘制
             stopContextMenu: true   // 【建议添加】禁用默认右键菜单
         });
         
@@ -2060,6 +2338,7 @@
         document.getElementById('expert-output-width').value = data.width;
         document.getElementById('expert-output-height').value = data.height;
         resetGenerationPreviews();
+        cancelAnnotationShapeDraft();
 
         // ==========================================
         // 【修改点】：在此处立即调用适配屏幕，防止跳动
@@ -2450,6 +2729,34 @@
                 return;
             }
 
+            if (annotationMode === 'brush' && annotationBrushKind === 'pline') {
+                if (evt.button === 2) { finishAnnotationPline(false); return; }
+                if (evt.button !== 0) return;
+                const pointer = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(pointer)) return;
+                canvas.discardActiveObject();
+                if (evt.ctrlKey || evt.metaKey) finishAnnotationPline(true);
+                else addAnnotationPlinePoint(pointer);
+                return;
+            }
+
+            if (annotationMode === 'brush' && annotationBrushKind === 'rect' && evt.button === 0) {
+                const pointer = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(pointer)) return;
+                canvas.discardActiveObject();
+                beginAnnotationRectDraft(pointer);
+                return;
+            }
+
+            if (annotationMode === 'brush' && annotationBrushKind === 'arrow' && evt.button === 0) {
+                const pointer = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(pointer)) return;
+                canvas.discardActiveObject();
+                if (arrowStart) finishAnnotationArrow(pointer);
+                else beginAnnotationArrowDraft(pointer);
+                return;
+            }
+
             if (evt.button === 0 && (annotationMode === 'text' || annotationMode === 'marker')) {
                 const pointer = canvas.getPointer(opt.e);
                 if (!pointIsOnSlide(pointer)) return;
@@ -2584,7 +2891,21 @@
                 return;
             }
 
-            // 2. 绘制中 (保持不变)
+            // 2. 画笔形状模式 (PLINE线预览 / 矩形拖拽)
+            if (annotationMode === 'brush' && annotationBrushKind === 'pline') {
+                updateAnnotationPlinePreview(canvas.getPointer(opt.e));
+                return;
+            }
+            if (rectDraft) {
+                updateAnnotationRectDraft(canvas.getPointer(opt.e));
+                return;
+            }
+            if (arrowStart) {
+                updateAnnotationArrowDraft(canvas.getPointer(opt.e));
+                return;
+            }
+
+            // 3. 绘制中 (保持不变)
             if ((isCreatingObject || isCreatingAdvancedMask || expertSelecting) && drawingObject) {
                 let ptr = clampPointToSlide(canvas.getPointer(opt.e));
                 if (drawingObject.type === 'rect') {
@@ -2632,6 +2953,12 @@
                 if (!isCreatingObject && !isPickingColor && !isPaintBucketMode) {
                      canvas.selection = true;
                 }
+                return;
+            }
+
+            // 结束矩形标注拖拽
+            if (rectDraft) {
+                finishAnnotationRectDraft();
                 return;
             }
 
@@ -2800,7 +3127,7 @@
     }
 
     // ---------- 历史（Undo / Redo）实现 ----------
-    const HISTORY_LIMIT = 5; // 固定保留最近 5 步，超出后丢弃最旧
+    const HISTORY_LIMIT = 20; // 固定保留最近 20 步，超出后丢弃最旧
     const HISTORY_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
     let historyPushTimer = null;
 

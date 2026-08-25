@@ -1,5 +1,5 @@
 {
-  "current_model": "反重力::gemini-3.1-flash-image",
+  "current_model": "jojo::gpt-image-2",
   "models": [
     {
       "id": "jojo::gpt-image-2",
@@ -31,5 +31,5 @@
     }
   ],
   "generation_mode": "webridge",
-  "webridge_site": "chatgpt"
+  "webridge_site": "gemini"
 }
