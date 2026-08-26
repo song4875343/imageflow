@@ -81,6 +81,8 @@
         .generation-card.is-selected { border-color:#55b7f0; box-shadow:0 0 0 2px rgba(85,183,240,.35),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.source-candidate { border-color:#00d394; box-shadow:0 0 0 2px rgba(0,211,148,.28),0 5px 16px rgba(0,0,0,.4); }
         .generation-card.is-main::before { content:"主图"; position:absolute; left:5px; top:5px; z-index:2; padding:2px 5px; border-radius:3px; color:#fff; background:#0e639c; font-size:10px; }
+        .generation-card { cursor:grab; }
+        .generation-card:active { cursor:grabbing; }
         .generation-card img { width:100%; height:100%; object-fit:contain; display:block; background:#0d0e0f; }
         .generation-eye, .generation-compare-toggle, .generation-fine-tune { position:absolute; right:4px; width:20px; height:20px; min-height:20px; display:grid; place-items:center; box-sizing:border-box; padding:0; border:1px solid rgba(255,255,255,.42); border-radius:4px; color:#fff; background:rgba(12,14,16,.82); box-shadow:0 2px 6px rgba(0,0,0,.35); cursor:pointer; line-height:1; }
         .generation-eye { top:4px; font-size:13px; }
@@ -713,6 +715,7 @@
     let maskPatchSelection = null;
     let maskPatchBusy = false;
     let previewBrushSize = 8;
+    let previewClickSuppressUntil = 0; // 拖拽缩略图结束时抑制误点击选中
     let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
     let plinePoints = [];        // PLINE 已确认节点
     let plinePreview = null;     // PLINE 预览线
@@ -1367,6 +1370,26 @@
         canvas.requestRenderAll();
     }
 
+function applyFineTuneLocks(entry) {
+        // 参考图/生成图层：未开启“微调”时为锁定态（不可拖动/缩放），
+        // 开启微调才解锁；标注/文字/选区等固定层带对象不在此列
+        if (!entry || entry.isMain) return;
+        const locked = fineTunePreviewId !== entry.previewId;
+        previewEntryObjects(entry).forEach(obj => {
+            if (!obj?.set || !previewLayerReorderable(obj)) return;
+            obj.set({
+                selectable: !locked,
+                evented: !locked,
+                hasControls: !locked,
+                lockMovementX: locked,
+                lockMovementY: locked,
+                lockScalingX: locked,
+                lockScalingY: locked,
+                lockRotation: locked,
+            });
+        });
+    }
+
     function toggleFineTune(previewId) {
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
@@ -1374,14 +1397,22 @@
         if (maskPatchSelection) clearMaskPatchSourceSelection();
         if (fineTunePreviewId === previewId) {
             fineTunePreviewId = null;
+            applyFineTuneLocks(entry);
+            canvas.discardActiveObject();
             syncGenerationPreviewVisibility();
-            setExpertStatus('已退出图层微调', '#dcdcaa');
+            setExpertStatus('已退出图层微调（图层已锁定，需开启微调才可移动/缩放）', '#dcdcaa');
             return;
         }
         selectGenerationPreview(previewId);
         fineTunePreviewId = previewId;
+        applyFineTuneLocks(entry);
+        const first = previewEntryObjects(entry)[0];
+        if (first && first.canvas === canvas) {
+            canvas.discardActiveObject();
+            canvas.setActiveObject(first);
+        }
         syncGenerationPreviewVisibility();
-        setExpertStatus('图层微调已开启：使用方向键每次移动 1 像素', '#dcdcaa');
+        setExpertStatus('图层微调已开启：可拖动/缩放，或用方向键每次微移 1 像素', '#dcdcaa');
     }
 
     function isPatchResult(result, options={}) {
@@ -1451,10 +1482,16 @@
         const card = document.createElement('div');
         card.className = 'generation-card';
         if (options.blendGroup && result.blendMethod !== 'confidence') card.classList.add('comparison-hidden');
-        card.onclick = () => selectGenerationPreview(previewId);
-        const thumbnail = document.createElement('img');
+        card.draggable = true;
+        card.dataset.previewId = previewId;
+        card.onclick = () => {
+            if (Date.now() < previewClickSuppressUntil) return;
+            selectGenerationPreview(previewId);
+        };
+const thumbnail = document.createElement('img');
         thumbnail.alt = label || (isFullImage ? '整图预览' : '局部图层预览');
         thumbnail.decoding = 'async';
+        thumbnail.draggable = false;
         const eye = document.createElement('button');
         eye.className = 'generation-eye';
         eye.type = 'button';
@@ -1496,6 +1533,7 @@
         if (options.prepend) items.prepend(card); else items.appendChild(card);
         const entry = {previewId, objects, button:eye, compareButton, fineTuneButton, card, thumbnail, kind, isFullImage:Boolean(isFullImage), sourceKey:previewSourceKey, sourceImageData:previewSource, blendGroup:options.blendGroup || null, blendMethod:result.blendMethod || null, isMain:Boolean(options.isMain), isAnnotation:Boolean(options.isAnnotation), isSelectionMask:Boolean(options.isSelectionMask), isPatch};
         generationPreviewObjects.set(previewId, entry);
+        applyFineTuneLocks(entry);
         if (previewSource) setPreviewThumbnail(entry, previewSource);
         syncGenerationPreviewVisibility();
         return entry;
@@ -2339,6 +2377,7 @@
         document.getElementById('expert-output-height').value = data.height;
         resetGenerationPreviews();
         cancelAnnotationShapeDraft();
+        enablePreviewCardsDrag();
 
         // ==========================================
         // 【修改点】：在此处立即调用适配屏幕，防止跳动
@@ -3124,6 +3163,96 @@
         const others = objects.filter(obj => !backgrounds.includes(obj) && !masks.includes(obj) && !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
         const texts = objects.filter(obj => obj.data?.type === 'text');
         backgrounds.concat(masks, others, texts, expertGuides, annotations).forEach((obj, index) => canvas.moveTo(obj, index));
+    }
+
+    function enablePreviewCardsDrag() {
+        const container = document.getElementById('generation-preview-items');
+        if (!container || container.dataset.dragReady) return;
+        container.dataset.dragReady = '1';
+        let dragCard = null;
+        container.addEventListener('dragstart', e => {
+            const card = e.target.closest('.generation-card');
+            if (!card) { e.preventDefault(); return; }
+            dragCard = card;
+            card.classList.add('dragging');
+            previewClickSuppressUntil = Date.now() + 300;
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', 'reorder'); } catch (err) {}
+        });
+        container.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (!dragCard) return;
+            const after = previewDragAfterElement(container, e.clientX);
+            if (after == null) container.appendChild(dragCard);
+            else container.insertBefore(dragCard, after);
+        });
+        container.addEventListener('drop', e => e.preventDefault());
+        container.addEventListener('dragend', () => {
+            if (!dragCard) return;
+            dragCard.classList.remove('dragging');
+            dragCard = null;
+            applyPreviewZOrder();
+            try { queueHistoryForPage(currentPageGlobal); } catch (err) {}
+        });
+    }
+
+    function previewDragAfterElement(container, x) {
+        const cards = [...container.querySelectorAll('.generation-card:not(.dragging)')];
+        return cards.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = x - (box.left + box.width / 2);
+            if (offset < 0 && offset > closest.offset) return { offset, element: child };
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY }).element || null;
+    }
+
+    function previewEntriesInOrder() {
+        const container = document.getElementById('generation-preview-items');
+        if (!container) return [];
+        const out = [];
+        const seen = new Set();
+        container.querySelectorAll('.generation-card').forEach(card => {
+            let entry = null;
+            generationPreviewObjects.forEach(item => { if (item.card === card) entry = item; });
+            if (entry && !seen.has(entry.previewId)) { seen.add(entry.previewId); out.push(entry); }
+        });
+        return out;
+    }
+
+    function applyPreviewZOrder() {
+        if (!canvas) return;
+        // 左=底层，右=顶层：按缩略图栏 DOM 顺序重排可拖起的预览图层
+        const layerObjects = [];
+        const seen = new Set();
+        previewEntriesInOrder().forEach(entry => {
+            previewEntryObjects(entry).forEach(obj => {
+                if (obj.canvas === canvas && !seen.has(obj) && previewLayerReorderable(obj)) {
+                    seen.add(obj);
+                    layerObjects.push(obj);
+                }
+            });
+        });
+        const objects = canvas.getObjects();
+        const backgrounds = objects.filter(obj => !obj.data || obj.data?.type === 'main-image');
+        const masks = objects.filter(obj => ['mask','advanced-mask','advanced-mask-guide'].includes(obj.data?.type));
+        const layerSet = new Set(layerObjects);
+        const masksFixed = masks.filter(obj => !layerSet.has(obj));
+        const expertGuides = objects.filter(obj => obj.data?.type === 'expert-guide');
+        const annotations = objects.filter(obj => obj.data?.type === 'annotation');
+        const texts = objects.filter(obj => obj.data?.type === 'text');
+        // 非预览图层：固定样式不带条带的对象按原相对顺序
+        const others = objects.filter(obj =>
+            !backgrounds.includes(obj) && !masksFixed.includes(obj) && !layerSet.has(obj) &&
+            !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
+        backgrounds.concat(masksFixed, others, layerObjects, texts, expertGuides, annotations)
+            .forEach((obj, index) => canvas.moveTo(obj, index));
+        canvas.requestRenderAll();
+    }
+
+    function previewLayerReorderable(obj) {
+        const t = obj?.data?.type;
+        // 固定层带内的对象（标注/文字/选区向导/普通蒙版形/草稿框）不参与缩略图排序
+        return !['annotation', 'text', 'expert-guide', 'mask', 'advanced-mask-guide'].includes(t);
     }
 
     // ---------- 历史（Undo / Redo）实现 ----------
@@ -4714,7 +4843,7 @@ async function openImageFile() {
                 addGenerationPreview(item, img, true, {label:'参考图'});
                 canvas.requestRenderAll();
                 queueHistoryForPage(currentPageGlobal);
-                setExpertStatus('已加载其他图片图层：可移动/缩放，可作为补丁图源', '#4ec9b0');
+                setExpertStatus('已加载其他图片图层：默认锁定，点缩略图“微调”后即可移动/缩放，可作为补丁图源', '#4ec9b0');
                 resolve();
             });
         });

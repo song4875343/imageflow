@@ -1186,7 +1186,8 @@ def _webridge_generate(
                 raise RuntimeError(f"WebBridge 生图失败: {exc}") from exc
             if not out_path or not os.path.exists(str(out_path)):
                 raise RuntimeError("WebBridge 未返回生成结果")
-            generated = Image.open(str(out_path)).convert("RGB")
+            # 保留 alpha：webridge/浏览器下载的可能是透明 PNG，转 RGB 会把透明区填黑
+            generated = Image.open(str(out_path)).convert("RGBA")
             if generated.size != target_size:
                 generated = generated.resize(target_size, Image.Resampling.LANCZOS)
             results.append(generated)
@@ -1221,11 +1222,18 @@ def _webridge_edit_patch(
             reference_images=reference_images,
             count=count,
         )
+        # 生成的局部图可能带透明背景：先合成回原裁剪区（透明处保留原图），
+        # 再 feather 拼贴，避免透明区被 RGB 转换填成黑色
+        base_rgba = target.convert("RGBA")
+        composited = [
+            Image.alpha_composite(base_rgba, generated.convert("RGBA")).convert("RGB")
+            for generated in generated_list
+        ]
         return [
             feather_patch(
-                image, generated, (x1, y1, x2, y2), selection_mask=editable_mask
+                image, composed, (x1, y1, x2, y2), selection_mask=editable_mask
             )
-            for generated in generated_list
+            for composed in composited
         ]
     return _webridge_generate(
         image,

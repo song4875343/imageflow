@@ -69,7 +69,7 @@ class ImageEditorAPI:
         if not result:
             return json.dumps({"cancelled": True})
         path = Path(result[0])
-        self.image = Image.open(path).convert("RGB")
+        self.image = Image.open(path).convert("RGBA")
         self.image_path = path
         return self.get_slide_data()
 
@@ -86,7 +86,7 @@ class ImageEditorAPI:
             if not result:
                 return json.dumps({"cancelled": True})
             path = Path(result[0])
-            image = Image.open(path).convert("RGB")
+            image = Image.open(path).convert("RGBA")
             return json.dumps(
                 {
                     "data_url": _data_url(image),
@@ -103,7 +103,7 @@ class ImageEditorAPI:
         """Open an image passed directly as a data URL (e.g. exported from the roomspace view)."""
         try:
             encoded = str(image_data).split(",", 1)[-1]
-            image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
+            image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGBA")
             self.image = image
             self.image_path = None
             return self.get_slide_data()
@@ -167,7 +167,8 @@ class ImageEditorAPI:
         )
         try:
             encoded = str(image_data).split(",", 1)[-1]
-            image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
+            # 保留 alpha：模型可能返回透明背景 PNG，转 RGB 会把透明区填成黑色
+            image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGBA")
             requested_size = (max(1, int(width)), max(1, int(height)))
             source = None
             if source_image:
@@ -201,6 +202,10 @@ class ImageEditorAPI:
             mask_protected = bool(source_image and selection_mask)
             patch_image = None
             pre_alignment = resized.copy() if mask_protected else None
+            # 保留生成图的透明通道，配准/融合后仍把 alpha 贴回，避免透明背景被填黑
+            generated_alpha = (
+                resized.getchannel("A") if "A" in resized.getbands() else None
+            )
             if mask_protected:
                 # Match the normal full-image flow: resize first, then align the
                 # generated image, then produce the confidence-fused patch.
@@ -215,6 +220,9 @@ class ImageEditorAPI:
                     selection_mask=selection_mask,
                 )
                 resized = aligned
+                if generated_alpha is not None and resized.size == generated_alpha.size:
+                    resized = resized.convert("RGBA")
+                    resized.putalpha(generated_alpha)
                 patch_image = correction_layer(source_target, corrected)
                 # correction_layer detects pixel differences, while confidence
                 # blending feathers across the boundary. Keep that blend, but

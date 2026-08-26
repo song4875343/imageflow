@@ -157,21 +157,38 @@ def chatgpt_upload_image(session, image_paths=IMAGE_PATH):
 
 
 def confirm_upload_dialog(session):
-    # ChatGPT 会弹出 "You've already uploaded this file." 确认框，自动点 OK
+    # ChatGPT 重复上传同一图片时会弹“图片已上传过，可以考虑上传其他图片”确认框。
+    # 自动点“仍然上传 / 仍要使用 / 继续 / OK / Confirm”等确认按钮；没弹窗则静默
+    # 返回，完全不影响正常流程。兼容中英文按钮，并识别“取消/更换”类按钮予以排除。
+    code = """(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const txt = (b) => (b.textContent || b.getAttribute('aria-label') || '').trim();
+      const confirmRe = /仍然|仍要|继续|确\\s*定|ok|confirm/i;
+      const cancelRe = /取消|改用|更换|重新选择|don'?t use|not now/i;
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]')).filter(isVisible);
+      let pool = dialogs.flatMap(d => Array.from(d.querySelectorAll('button')));
+      if (!pool.length) pool = Array.from(document.querySelectorAll('button'));
+      const pick = pool.filter(b => isVisible(b)).find(b => {
+        const t = txt(b);
+        return confirmRe.test(t) && !cancelRe.test(t);
+      });
+      if (pick) {
+        pick.click();
+        return JSON.stringify({ clicked: true, label: txt(pick).slice(0, 30) });
+      }
+      return JSON.stringify({ clicked: false, dialog: dialogs.length > 0 });
+    })()"""
     for _ in range(5):
-        r = evaluate(
-            """(() => {
-          const dlg = document.querySelector('[role="dialog"]');
-          if (!dlg) return JSON.stringify({ found: false });
-          const ok = Array.from(dlg.querySelectorAll('button')).find(b => /ok|confirm/i.test(b.textContent || ''));
-          if (ok) { ok.click(); return JSON.stringify({ found: true, clicked: true }); }
-          return JSON.stringify({ found: true, clicked: false });
-        })()""",
-            session,
-        )
+        r = evaluate(code, session)
         try:
             val = json.loads(r["data"]["value"])
-            if not val["found"]:
+            if val.get("clicked"):
+                print(f"[confirm] 已自动确认重复上传提示：{val.get('label')}")
+            elif not val.get("dialog"):
                 return
         except Exception as e:
             print(f"[confirm] {e}")
@@ -1170,6 +1187,10 @@ def run(site, image_paths, text, manual_wait=180, cancel_event=None):
             print("[main] upload not ready, continuing with 1s grace anyway")
         time.sleep(1.0)
     cfg["fill"](session, text)
+
+    # ChatGPT 的重复上传确认框可能推迟出现并挡住发送按钮，发送前再自动确认一次
+    if site == "chatgpt":
+        confirm_upload_dialog(session)
 
     # 发送前记录用户消息数，发送后据此定位"本次新消息"的位置来抓图，不做文本比对
     n0 = _count_selector(session, cfg["user_selector"])
