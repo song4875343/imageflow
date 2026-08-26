@@ -604,6 +604,7 @@
             <button id="mask-paint-button" class="layer-action icon-btn annotation-action" title="涂抹（增加蒙版）" aria-label="涂抹" hidden onclick="startMaskBrush('add')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c2.5-1.2 4-3.8 4.5-6.5.3-1.8 1.2-3 2.5-3.5-1.5-1-3.7-.6-5 .9-2 2.3-2.6 6-2 9.1z" fill="currentColor" stroke="none"/><path d="M14 6h6M17 3v6" stroke-width="2"/></svg></button>
             <button id="mask-erase-button" class="layer-action icon-btn annotation-action" title="橡皮擦（消减蒙版）" aria-label="橡皮擦" hidden onclick="startMaskBrush('subtract')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3.6 15.1a1.5 1.5 0 0 1 0-2.1L13 3.6a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L13 18.5"/><path d="M6.5 10.5l7 7"/></svg></button>
             <button id="mask-patch-button" class="layer-action icon-btn annotation-action" title="生成补丁" aria-label="生成补丁" hidden onclick="startMaskPatchSourceSelection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3.4 2.6"/><path d="M12 9.5v5M9.5 12h5"/></svg></button>
+            <button id="mask-crop-button" class="layer-action icon-btn annotation-action" title="蒙板取图" aria-label="蒙板取图" hidden onclick="startMaskCropSourceSelection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v16a2 2 0 0 0 2 2h14"/><path d="M18 22V6a2 2 0 0 0-2-2H2"/><path d="M9 6v.5"/></svg></button>
             <button id="annotation-text-button" class="layer-action icon-btn annotation-action" title="文字" aria-label="文字" onclick="addAnnotationText()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4.5h14V6"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
             <button id="annotation-marker-button" class="layer-action icon-btn annotation-action" title="标记" aria-label="标记" onclick="toggleAnnotationMarker()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
             <button class="layer-action icon-btn" title="保存" aria-label="保存" onclick="openSaveChoiceDialog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
@@ -714,6 +715,17 @@
     let maskOverlayEventsBound = false;
     let maskPatchSelection = null;
     let maskPatchBusy = false;
+    let maskCropSelection = null;
+    // --- 补丁取图编辑（涂抹/橡皮）状态 ---
+    let patchEditEntry = null;          // 当前正在编辑的取图补丁条目
+    let patchEditImg = null;            // 补丁的取图源 Image（全尺寸目标图）
+    let patchEditCoverage = null;       // 覆盖度 canvas（RGBA，alpha=覆盖度）
+    let patchEditBrushMode = null;      // 'add' | 'subtract'
+    let patchEditOverlayActive = false;
+    let patchEditStrokeActive = false;
+    let patchEditLastPoint = null;
+    let patchEditPointerId = null;
+    let patchEditEventsBound = false;
     let previewBrushSize = 8;
     let previewClickSuppressUntil = 0; // 拖拽缩略图结束时抑制误点击选中
     let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
@@ -966,6 +978,8 @@
         maskBrushMode = null;
         maskPatchSelection = null;
         maskPatchBusy = false;
+        maskCropSelection = null;
+        stopPatchBrush();
         annotationMarkerNumber = 1;
         updateAnnotationMarkerButton();
         updatePreviewToolbar();
@@ -990,13 +1004,30 @@
     function updatePreviewToolbar() {
         const entry = selectedPreviewEntry();
         const isMask = Boolean(entry?.isSelectionMask);
-        const isBrush = annotationMode === 'brush' || Boolean(maskBrushMode);
-        document.getElementById('mask-paint-button')?.toggleAttribute('hidden', !isMask);
-        document.getElementById('mask-erase-button')?.toggleAttribute('hidden', !isMask);
+        const isEditablePatch = Boolean(entry?.isPatch && entry?.patchSourceImageData);
+        const showPaint = isMask || isEditablePatch;
+        const isBrush = annotationMode === 'brush' || Boolean(maskBrushMode) || Boolean(patchEditBrushMode);
+        const paintButton = document.getElementById('mask-paint-button');
+        const eraseButton = document.getElementById('mask-erase-button');
+        paintButton?.toggleAttribute('hidden', !showPaint);
+        eraseButton?.toggleAttribute('hidden', !showPaint);
+        if (isEditablePatch) {
+            paintButton?.setAttribute('title', '涂抹（增加补丁内容）');
+            paintButton?.setAttribute('aria-label', '涂抹补丁');
+            eraseButton?.setAttribute('title', '橡皮（消除补丁内容）');
+            eraseButton?.setAttribute('aria-label', '橡皮擦补丁');
+        } else if (isMask) {
+            paintButton?.setAttribute('title', '涂抹（增加蒙版）');
+            paintButton?.setAttribute('aria-label', '涂抹');
+            eraseButton?.setAttribute('title', '橡皮擦（消减蒙版）');
+            eraseButton?.setAttribute('aria-label', '橡皮擦');
+        }
         document.getElementById('mask-patch-button')?.toggleAttribute('hidden', !isMask);
-        document.getElementById('mask-paint-button')?.classList.toggle('is-active', maskBrushMode === 'add');
-        document.getElementById('mask-erase-button')?.classList.toggle('is-active', maskBrushMode === 'subtract');
+        document.getElementById('mask-crop-button')?.toggleAttribute('hidden', !isMask);
+        paintButton?.classList.toggle('is-active', maskBrushMode === 'add' || patchEditBrushMode === 'add');
+        eraseButton?.classList.toggle('is-active', maskBrushMode === 'subtract' || patchEditBrushMode === 'subtract');
         document.getElementById('mask-patch-button')?.classList.toggle('is-active', Boolean(maskPatchSelection));
+        document.getElementById('mask-crop-button')?.classList.toggle('is-active', Boolean(maskCropSelection));
         const sizeRow = document.getElementById('preview-brush-size-row');
         if (sizeRow) sizeRow.hidden = !isBrush;
         const modeGroup = document.getElementById('preview-brush-mode-group');
@@ -1341,8 +1372,20 @@
             generateMaskPatchFromSource(previewId);
             return;
         }
+        if (maskCropSelection && previewId !== maskCropSelection.maskPreviewId) {
+            const sourceEntry = resolveLivePreviewEntry(previewId);
+            const sourceObjects = previewEntryObjects(sourceEntry);
+            const isImageSource = sourceObjects.length === 1 && sourceObjects[0].type === 'image';
+            if (!sourceEntry || sourceEntry.isMain || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
+                setExpertStatus('取图源必须是主图之外的单张图片缩略图', '#f48771');
+                return;
+            }
+            generateMaskCropFromSource(previewId);
+            return;
+        }
         stopAnnotationMode();
         stopMaskBrush();
+        stopPatchBrush();
         if (fineTunePreviewId && fineTunePreviewId !== previewId) fineTunePreviewId = null;
         const entry = resolveLivePreviewEntry(previewId);
         const objects = previewEntryObjects(entry);
@@ -1551,6 +1594,7 @@ const thumbnail = document.createElement('img');
         }
         const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
         if (entries.some(item => item.previewId === fineTunePreviewId)) fineTunePreviewId = null;
+        if (entries.includes(patchEditEntry)) stopPatchBrush();
         suppressPreviewCardSync = true;
         deletedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
         suppressPreviewCardSync = false;
@@ -1954,10 +1998,16 @@ const thumbnail = document.createElement('img');
     }
 
     function startMaskBrush(mode) {
+        const selected = selectedPreviewEntry();
+        if (selected?.isPatch && selected.patchSourceImageData) {
+            startPatchBrush(mode);
+            return;
+        }
         if (!canvas || !maskPreviewEntry()) return;
         if (maskBrushMode === mode) { stopMaskBrush(); setExpertStatus('已退出蒙版编辑', '#dcdcaa'); return; }
         stopAnnotationMode();
         stopExpertSelectionDrawing();
+        stopPatchBrush();
         showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || maskPreviewEntry().sourceImageData || null);
         maskBrushMode = mode === 'subtract' ? 'subtract' : 'add';
         bindMaskOverlayEvents();
@@ -1991,6 +2041,327 @@ const thumbnail = document.createElement('img');
         maskPatchSelection = null;
         generationPreviewObjects.forEach(item => item.card.classList.remove('source-candidate'));
         updatePreviewToolbar();
+    }
+
+    // ===== 蒙板取图（按蒙板范围截取目标图片生成补丁）=====
+    function startMaskCropSourceSelection() {
+        const entry = maskPreviewEntry();
+        if (!entry) return;
+        if (maskCropSelection?.maskPreviewId === entry.previewId) {
+            clearMaskCropSourceSelection();
+            setExpertStatus('已取消取图源选择', '#dcdcaa');
+            return;
+        }
+        stopMaskBrush();
+        stopPatchBrush();
+        stopAnnotationMode();
+        if (maskPatchSelection) clearMaskPatchSourceSelection();
+        fineTunePreviewId = null;
+        maskCropSelection = {maskPreviewId: entry.previewId};
+        updatePreviewToolbar();
+        setExpertStatus('请选择一张图片缩略图作为蒙板取图源（取图源需为主图之外的单张图片）', '#dcdcaa');
+        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation && !item.isMain));
+    }
+
+    function clearMaskCropSourceSelection() {
+        maskCropSelection = null;
+        generationPreviewObjects.forEach(item => item.card.classList.remove('source-candidate'));
+        updatePreviewToolbar();
+    }
+
+    function loadImageElement(src) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('图片加载失败'));
+            image.src = src;
+        });
+    }
+
+    async function generateMaskCropFromSource(sourcePreviewId) {
+        if (maskPatchBusy) return;
+        const maskEntry = maskPreviewEntry();
+        const sourceEntry = resolveLivePreviewEntry(sourcePreviewId);
+        const sourceObjects = previewEntryObjects(sourceEntry);
+        const maskPayload = exportExpertSelectionMask();
+        const mainEntry = mainPreviewEntry();
+        if (!maskEntry || !sourceEntry || !mainEntry || sourceObjects.length !== 1 || sourceObjects[0].type !== 'image' || !maskPayload) {
+            clearMaskCropSourceSelection();
+            setExpertStatus('无法取图：请确认蒙版、主图和取图源均有效', '#f48771');
+            return;
+        }
+        const sourceLayer = exportPreviewLayerImage(sourceEntry);
+        if (!sourceLayer) {
+            clearMaskCropSourceSelection();
+            setExpertStatus('取图源导出失败', '#f48771');
+            return;
+        }
+        const W = canvas.originalWidth, H = canvas.originalHeight;
+        maskPatchBusy = true;
+        setExpertStatus('正在按蒙板范围截取目标图片...', '#dcdcaa');
+        try {
+            const [sourceImg, maskImg] = await Promise.all([loadImageElement(sourceLayer), loadImageElement(maskPayload.maskData)]);
+            const patchCanvas = document.createElement('canvas');
+            patchCanvas.width = W; patchCanvas.height = H;
+            const pctx = patchCanvas.getContext('2d', {alpha: true});
+            pctx.clearRect(0, 0, W, H);
+            pctx.globalCompositeOperation = 'source-over';
+            pctx.drawImage(sourceImg, 0, 0, W, H);
+            pctx.globalCompositeOperation = 'destination-in';
+            pctx.drawImage(maskImg, 0, 0, W, H);
+            const patchData = patchCanvas.toDataURL('image/png');
+            const coverageCanvas = document.createElement('canvas');
+            coverageCanvas.width = W; coverageCanvas.height = H;
+            const cctx = coverageCanvas.getContext('2d', {alpha: true});
+            cctx.clearRect(0, 0, W, H);
+            cctx.globalCompositeOperation = 'source-over';
+            cctx.drawImage(maskImg, 0, 0, W, H);
+            const coverageData = coverageCanvas.toDataURL('image/png');
+
+            await new Promise((resolve, reject) => fabric.Image.fromURL(patchData, image => {
+                if (!image) { reject(new Error('补丁图加载失败')); return; }
+                const layerId = `mask-crop-${Date.now()}`;
+                image.set({left: 0, top: 0, scaleX: W / image.width, scaleY: H / image.height,
+                    selectable: true, evented: true, hasControls: false, lockScalingX: true, lockScalingY: true, lockRotation: true,
+                    data: {type: 'advanced-mask', id: layerId, assetId: layerId, previewVisible: true, isFullImage: true, isPatch: true, blendMethod: 'crop', blendLabel: '蒙板取图'}});
+                canvas.add(image);
+                const entry = addGenerationPreview({id: image.data?.id || Date.now(), imageData: patchData, overlay: {x: 0, y: 0, w: W, h: H}, blendMethod: 'crop', blendLabel: '蒙板取图'}, image, true, {label: '蒙板取图', isPatch: true});
+                entry.patchSourceImageData = sourceLayer;
+                entry.patchCoverageData = coverageData;
+                entry.patchBounds = {x: maskPayload.bounds.x, y: maskPayload.bounds.y, w: maskPayload.bounds.w, h: maskPayload.bounds.h};
+                previewEntryObjects(entry).forEach(object => {
+                    object.data = object.data || {};
+                    object.data.patchSourceImageData = sourceLayer;
+                    object.data.patchCoverageData = coverageData;
+                    object.data.patchBounds = entry.patchBounds;
+                });
+                reorderLayers();
+                canvas.requestRenderAll();
+                clearMaskCropSourceSelection();
+                selectGenerationPreview(entry.previewId);
+                queueHistoryForPage(currentPageGlobal);
+                resolve();
+            }));
+            setExpertStatus('已生成蒙板取图补丁，选中后可点「涂抹/橡皮」编辑局部内容', '#4ec9b0');
+        } catch (error) {
+            console.error(error);
+            setExpertStatus(`蒙板取图失败：${error.message || error}`, '#f48771');
+        } finally {
+            maskPatchBusy = false;
+            clearMaskCropSourceSelection();
+        }
+    }
+
+    // ===== 补丁取图编辑：涂抹（增加）/ 橡皮（消除）=====
+    function selectedPatchEntry() {
+        const entry = selectedPreviewEntry();
+        return (entry && entry.isPatch && entry.patchSourceImageData) ? entry : null;
+    }
+
+    function initPatchEditResources(entry) {
+        const W = canvas.originalWidth, H = canvas.originalHeight;
+        if (!ensureMaskOverlayCanvas()) return;
+        patchEditCoverage = document.createElement('canvas');
+        patchEditCoverage.width = W; patchEditCoverage.height = H;
+        const cctx = patchEditCoverage.getContext('2d', {alpha: true});
+        cctx.clearRect(0, 0, W, H);
+        if (entry.patchCoverageData) {
+            const img = new Image();
+            img.onload = () => { cctx.drawImage(img, 0, 0, W, H); restorePatchOverlay(); };
+            img.onerror = () => restorePatchOverlay();
+            img.src = entry.patchCoverageData;
+        } else {
+            restorePatchOverlay();
+        }
+        patchEditImg = null;
+        const src = new Image();
+        src.onload = () => { patchEditImg = src; restorePatchOverlay(); };
+        src.onerror = () => restorePatchOverlay();
+        src.src = entry.patchSourceImageData || '';
+    }
+
+    function restorePatchOverlay() {
+        if (!patchEditEntry || !patchEditCoverage) return;
+        const context = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!context) return;
+        const W = patchEditCoverage.width, H = patchEditCoverage.height;
+        context.save();
+        context.globalCompositeOperation = 'source-over';
+        context.clearRect(0, 0, W, H);
+        if (patchEditImg) {
+            context.drawImage(patchEditImg, 0, 0, W, H);
+            context.globalCompositeOperation = 'destination-in';
+            context.drawImage(patchEditCoverage, 0, 0, W, H);
+            context.globalCompositeOperation = 'source-over';
+            const imageData = context.getImageData(0, 0, W, H);
+            const pixels = imageData.data;
+            for (let index = 0; index < pixels.length; index += 4) {
+                pixels[index] = 74;
+                pixels[index + 1] = 163;
+                pixels[index + 2] = 223;
+            }
+            context.putImageData(imageData, 0, 0);
+        }
+        context.restore();
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (overlay) { overlay.classList.add('is-visible'); patchEditOverlayActive = true; }
+    }
+
+    function startPatchBrush(mode) {
+        const entry = selectedPatchEntry();
+        if (!entry || !canvas) return;
+        if (patchEditBrushMode === mode && patchEditEntry === entry) {
+            stopPatchBrush();
+            setExpertStatus('已退出补丁编辑', '#dcdcaa');
+            return;
+        }
+        stopMaskBrush();
+        stopAnnotationMode();
+        stopExpertSelectionDrawing();
+        fineTunePreviewId = null;
+        patchEditEntry = entry;
+        patchEditBrushMode = mode === 'subtract' ? 'subtract' : 'add';
+        initPatchEditResources(entry);
+        bindPatchEditEvents();
+        canvas.discardActiveObject();
+        canvas.selection = false;
+        canvas.isDrawingMode = false;
+        canvas.defaultCursor = 'crosshair';
+        document.getElementById('mask-edit-overlay')?.classList.add('is-brush-active');
+        updatePreviewToolbar();
+        setExpertStatus(patchEditBrushMode === 'subtract' ? '橡皮擦已开启：涂抹以消除补丁局部内容' : '涂抹已开启：涂抹以增加取图补丁局部内容', '#4ec9b0');
+    }
+
+    function stopPatchBrush() {
+        if (!canvas) return;
+        patchEditBrushMode = null;
+        patchEditStrokeActive = false;
+        patchEditLastPoint = null;
+        patchEditEntry = null;
+        document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active');
+        document.getElementById('mask-edit-overlay')?.classList.remove('is-visible');
+        patchEditOverlayActive = false;
+        if (annotationMode !== 'brush' && annotationMode !== 'text' && annotationMode !== 'marker' && !maskBrushMode) {
+            canvas.isDrawingMode = false;
+            canvas.selection = true;
+            canvas.defaultCursor = 'default';
+        }
+        updatePreviewToolbar();
+    }
+
+    function patchOverlayPoint(event) {
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay || !patchEditCoverage) return null;
+        const rect = overlay.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            x: Math.max(0, Math.min(patchEditCoverage.width, (event.clientX - rect.left) * patchEditCoverage.width / rect.width)),
+            y: Math.max(0, Math.min(patchEditCoverage.height, (event.clientY - rect.top) * patchEditCoverage.height / rect.height)),
+        };
+    }
+
+    function drawPatchOverlaySegment(from, to) {
+        const context = maskOverlayContext || ensureMaskOverlayCanvas();
+        const ccx = patchEditCoverage?.getContext('2d', {alpha: true});
+        if (!context || !ccx || !from || !to) return;
+        const subtract = patchEditBrushMode === 'subtract';
+        context.save();
+        context.globalCompositeOperation = subtract ? 'destination-out' : 'source-over';
+        context.strokeStyle = subtract ? '#000000' : '#4aa3df';
+        context.globalAlpha = 1;
+        context.lineWidth = previewBrushSize;
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.beginPath();
+        context.moveTo(from.x, from.y);
+        context.lineTo(to.x, to.y);
+        context.stroke();
+        context.restore();
+        ccx.save();
+        ccx.globalCompositeOperation = subtract ? 'destination-out' : 'source-over';
+        ccx.strokeStyle = subtract ? '#000000' : '#4aa3df';
+        ccx.globalAlpha = 1;
+        ccx.lineWidth = previewBrushSize;
+        ccx.lineCap = 'round';
+        ccx.lineJoin = 'round';
+        ccx.beginPath();
+        ccx.moveTo(from.x, from.y);
+        ccx.lineTo(to.x, to.y);
+        ccx.stroke();
+        ccx.restore();
+        document.getElementById('mask-edit-overlay')?.classList.add('is-visible');
+    }
+
+    function commitPatchEdit() {
+        if (!patchEditEntry || !patchEditCoverage || !patchEditImg) return;
+        const W = patchEditCoverage.width, H = patchEditCoverage.height;
+        const patchCanvas = document.createElement('canvas');
+        patchCanvas.width = W; patchCanvas.height = H;
+        const pctx = patchCanvas.getContext('2d', {alpha: true});
+        pctx.clearRect(0, 0, W, H);
+        pctx.globalCompositeOperation = 'source-over';
+        pctx.drawImage(patchEditImg, 0, 0, W, H);
+        pctx.globalCompositeOperation = 'destination-in';
+        pctx.drawImage(patchEditCoverage, 0, 0, W, H);
+        const patchData = patchCanvas.toDataURL('image/png');
+        patchEditEntry.patchCoverageData = patchEditCoverage.toDataURL('image/png');
+        patchEditEntry.imageData = patchData;
+        setPreviewThumbnail(patchEditEntry, patchData);
+        const objects = previewEntryObjects(patchEditEntry);
+        objects.forEach(object => {
+            object.data = object.data || {};
+            object.data.patchCoverageData = patchEditEntry.patchCoverageData;
+        });
+        if (objects[0] && objects[0].type === 'image') {
+            const element = document.createElement('canvas');
+            element.width = W; element.height = H;
+            element.getContext('2d', {alpha: true}).drawImage(patchCanvas, 0, 0);
+            objects[0].setElement(element);
+            objects[0].set({scaleX: W / element.width, scaleY: H / element.height});
+        }
+        canvas?.requestRenderAll();
+    }
+
+    function finishPatchOverlayStroke() {
+        if (!patchEditStrokeActive) return;
+        patchEditStrokeActive = false;
+        patchEditLastPoint = null;
+        try { document.getElementById('mask-edit-overlay')?.releasePointerCapture?.(patchEditPointerId); } catch (error) { /* no-op */ }
+        restorePatchOverlay();
+        commitPatchEdit();
+        queueHistoryForPage(currentPageGlobal);
+        canvas?.requestRenderAll();
+    }
+
+    function bindPatchEditEvents() {
+        if (patchEditEventsBound) return;
+        const overlay = document.getElementById('mask-edit-overlay');
+        if (!overlay) return;
+        patchEditEventsBound = true;
+        overlay.addEventListener('pointerdown', event => {
+            if (!patchEditBrushMode || !patchEditOverlayActive) return;
+            event.preventDefault();
+            patchEditPointerId = event.pointerId;
+            overlay.setPointerCapture?.(event.pointerId);
+            patchEditStrokeActive = true;
+            const point = patchOverlayPoint(event);
+            patchEditLastPoint = point;
+            drawPatchOverlaySegment(point, point);
+        });
+        overlay.addEventListener('pointermove', event => {
+            if (!patchEditStrokeActive || event.pointerId !== patchEditPointerId) return;
+            event.preventDefault();
+            const point = patchOverlayPoint(event);
+            drawPatchOverlaySegment(patchEditLastPoint, point);
+            patchEditLastPoint = point;
+        });
+        overlay.addEventListener('pointerup', event => {
+            if (event.pointerId === patchEditPointerId) finishPatchOverlayStroke();
+        });
+        overlay.addEventListener('pointercancel', event => {
+            if (event.pointerId === patchEditPointerId) finishPatchOverlayStroke();
+        });
+        overlay.addEventListener('lostpointercapture', () => finishPatchOverlayStroke());
     }
 
     function addAnnotationText() {
