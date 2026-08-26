@@ -6,6 +6,7 @@
 
 - `image_eidt/` — 图片编辑应用（app.py / index.html / image_edit.py）
 - `roomspace/` — 空间设计（EROOM）3D 应用源码，启动时自动打包嵌入
+- `webridge/` — WebBridge 浏览器生图桥接（上传 / 发送 / 全尺寸下载）
 - `启动图片微调.bat` — 启动入口（放在项目根目录）
 
 ## 启动

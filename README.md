@@ -8,11 +8,13 @@
 ## 功能特性
 
 ### 图片编辑
-- 打开 / 保存图片（PNG、JPG/JPEG、WebP、BMP、GIF）
+- 打开 / 保存图片（PNG、JPG/JPEG、WebP、BMP、GIF），透明背景图片全程保留 RGBA，不会填充黑底
 - 专家模式：框选区域 + 修改描述，调用 AI 模型局部编辑；支持蒙版保护、参考图片、整图生成
+- 通过「＋」加载其他图片作为独立图层（参考图），可移动定位并作为补丁图源
 - 生成尺寸预设（1K/2K/4K 等）与宽高比选择，支持自定义尺寸
-- 生成结果预览列表、主图管理、删除/隐藏；返回尺寸与请求不一致时可选择「使用返回尺寸 / 强制缩放一致 / 放弃」
-- 蒙版与高级蒙版、颜色吸管、填充、文字/画笔/标记点标注、撤销/重做
+- 生成结果预览列表：主图管理、删除/隐藏、**拖拽缩略图调整图层叠放顺序**；图层「微调」开关解锁后即可自由移动/缩放，默认锁定防误触
+- 返回尺寸与请求不一致时可选择「使用返回尺寸 / 强制缩放一致 / 放弃」
+- 蒙版与高级蒙版、颜色吸管、填充、文字标注、画笔标注（涂鸦 / PLINE线 / 矩形 / 箭头 四模式，图标化屏幕菜单）、标记点、撤销/重做（最近 20 步）
 - 深色 / 浅色主题，切换后持久化到 `image_eidt/theme.json`
 - 模型管理：添加、修改、删除、切换多个服务商的图像模型
 
@@ -39,6 +41,8 @@ image_edit/
 │   ├── editor.js               # 平面编辑器（底图、构件绘制、撤销/重做）
 │   ├── style.css / overrides.css / panel-scroll.css
 │   └── public/models.json      # 空间模型数据
+├── webridge/
+│   └── bridge.py               # WebBridge 浏览器生图桥接（上传/发送/全尺寸下载）
 ├── 启动图片微调.bat             # Windows 一键启动脚本
 ├── pyproject.toml              # uv 项目配置与依赖
 └── uv.lock
@@ -92,9 +96,9 @@ python image_eidt/app.py
 「图片编辑」面板的设置（齿轮按钮 → 生成方式）支持两种生图途径：
 
 - **API 模式（默认）**：走 `image_models.json` 中配置的图像模型接口。
-- **WebBridge 模式**：通过本仓库内 `webridge/` 模块（`webridge/bridge.py`）驱动浏览器（Gemini / ChatGPT 站点）完成图文修改，下拉选择站点后生图走 `bridge.run` 流程。
+- **WebBridge 模式**：通过本仓库内 `webridge/` 模块（`webridge/bridge.py`）驱动浏览器（Gemini / ChatGPT 站点）完成图文修改，下拉选择站点后生图走 `bridge.run` 流程。全尺寸下载以浏览器原生下载为基准：先接管浏览器原生下载目录并轮询收编真图（与默认下载目录大小一致），捕获的候选 URL 按像素探测取最大，页面 fetch / CDP 网络双通道取回时仅作降级且「取大保留」，避免水印压缩图或小图误交。
 
-`image_eidt/image_models.json` 中会持久化 `generation_mode`（`api` / `webridge`）与 `webridge_site`（`gemini` / `chatgpt`）两个字段。使用 WebBridge 模式前需启动 webridge 桥接服务（`127.0.0.1:10086`）并确保浏览器已登录对应站点。
+`image_eidt/image_models.json` 中会持久化 `generation_mode`（`api` / `webridge`）与 `webridge_site`（`gemini` / `chatgpt`）两个字段。使用 WebBridge 模式前需启动 webridge 桥接服务（`127.0.0.1:10086`）并确保浏览器已登录对应站点。WebBridge/API 返回的透明 PNG 会保留 alpha 通道，不填充黑底。
 
 ## 技术栈
 
