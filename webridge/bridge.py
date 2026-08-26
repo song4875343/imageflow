@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -665,7 +666,9 @@ def download_via_network(src, session):
     handle = res.get("stream")
     mime = (res.get("headers") or {}).get("content-type") or "image/jpeg"
     parts = []
-    while handle:
+    reads = 0
+    while handle and reads < 300:
+        reads += 1
         rr = webbridge_cmd(
             "cdp", {"method": "IO.read", "params": {"handle": handle}}, session=session
         )
@@ -677,6 +680,8 @@ def download_via_network(src, session):
             )
         if data.get("eof"):
             break
+    if reads >= 300:
+        print("[download] IO.read 已达 300 次上限未收到 eof，按 eof 处理")
     raw = b"".join(parts)
     if not raw:
         print("[download] empty body")
@@ -731,7 +736,7 @@ def _probe_dims(url, session):
         const im = new Image();
         im.onload = () => resolve({{ w: im.naturalWidth, h: im.naturalHeight }});
         im.onerror = () => resolve(null);
-        setTimeout(() => resolve(null), 8000);
+        setTimeout(() => resolve(null), 15000);
         im.src = {json.dumps(url)};
       }});
       return JSON.stringify(d || {{ err: 'probe failed' }});
@@ -749,10 +754,11 @@ def _probe_dims(url, session):
 
 
 def _install_download_capture(session):
-    # 在页面里挂钩子，拦截生成图的下载动作取回全尺寸 URL，并 cancel 掉浏览器
-    # 真实的落盘下载（我们要自己拉取而不是存进用户下载目录）。
-    # 所有来源的候选全部去重记录，谁是真的全尺寸交给像素探测判断——URL 形状
-    # 不可靠：预览图可能不带缩放参数、原图可能走 XHR 或 blob:，先到先得必错。
+    # 在页面里挂钩子，记录生成图的下载动作取回候选 URL。**不再 preventDefault**
+    # 拦截：让浏览器原生落盘真图（可能比任何 CDN 通道更接近用户下载目录里的那份），
+    # 我们额外把它收编为准。所有来源的候选全部去重记录，谁是真的全尺寸交给像素
+    # 探测判断——URL 形状不可靠：预览图可能不带缩放参数、原图可能走 XHR 或 blob:，
+    # 先到先得必错。
     # a[download] 的 href 无条件捕获（含 blob:，那是 Gemini 自己准备好的成品）；
     # fetch/open/XHR 只记图片 CDN 的 URL（blob 太杂会淹没候选列表）
     code = """(() => {
@@ -767,8 +773,6 @@ def _install_download_capture(session):
         const a = e.target && e.target.closest ? e.target.closest('a[download]') : null;
         if (a && a.href) {
           cap(a.href, 'anchor');
-          e.preventDefault();
-          e.stopImmediatePropagation();
         }
       }, true);
       const origOpen = window.open;
@@ -814,11 +818,127 @@ def _click_image_download(session, src):
     return evaluate(code.replace("__SRC__", json.dumps(src)), session)
 
 
+def _file_bigness(path):
+    # 两通道取大用：优先按文件头像素短边，解析不了退而按字节大小
+    dims = _image_min_side(path)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    if dims is not None:
+        return (1, dims, size)
+    return (0, size, size)
+
+
+# ============ 原生下载收编（真图基准） ============
+
+
+NATIVE_DIR = os.path.join(OUT_DIR, "native")
+
+
+def _configure_native_download(session):
+    # 让浏览器原生下载落到受控目录（否则真图会掉进用户默认下载目录）。
+    # Page 域对页面目标生效，部分 Chrome 版本要求 Browser 域，两个都试。
+    os.makedirs(NATIVE_DIR, exist_ok=True)
+    for method in ("Page.setDownloadBehavior", "Browser.setDownloadBehavior"):
+        try:
+            r = webbridge_cmd(
+                "cdp",
+                {
+                    "method": method,
+                    "params": {"behavior": "allow", "downloadPath": NATIVE_DIR},
+                },
+                session=session,
+            )
+        except Exception:
+            continue
+        data = r.get("data") or {}
+        if "result" in data or r.get("ok"):
+            print(f"[download] 原生下载目录已接管：{method} -> {NATIVE_DIR}")
+            return True
+    print("[download] 无法接管原生下载目录，真图可能落在默认下载目录（会尝试扫描）")
+    return False
+
+
+def _download_dirs():
+    dirs = [NATIVE_DIR]
+    home_dl = os.path.join(os.path.expanduser("~"), "Downloads")
+    if os.path.isdir(home_dl):
+        dirs.append(home_dl)
+    return dirs
+
+
+def _native_snapshot():
+    # 起始时刻各下载目录已存在的文件名，用于识别“本次点击新落盘”的文件
+    names = set()
+    for d in _download_dirs():
+        try:
+            names.update(os.listdir(d))
+        except OSError:
+            pass
+    return names
+
+
+def _pick_native_new(before_names):
+    # 新文件 = 起始快照里没有的名字，且 120s 内落盘、>=50KB（过滤历史文件和零碎文件）
+    floor = time.time() - 120
+    best = None
+    for d in _download_dirs():
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if n in before_names:
+                continue
+            p = os.path.join(d, n)
+            try:
+                size = os.path.getsize(p)
+                mt = os.path.getmtime(p)
+            except OSError:
+                continue
+            if size < 50 * 1024 or mt < floor:
+                continue
+            if best is None or mt > best[1]:
+                best = (p, mt)
+    return best[0] if best else None
+
+
+def _sniff_image_ext(path):
+    try:
+        with open(path, "rb") as f:
+            return ".png" if f.read(8).startswith(b"\x89PNG") else ".jpg"
+    except OSError:
+        return ".jpg"
+
+
+def _adopt_native(path):
+    # 把浏览器原生落盘的真图收编到 OUT_DIR（大小与用户默认下载目录那份一致）
+    dest = os.path.join(
+        OUT_DIR, f"generated_{int(time.time())}{_sniff_image_ext(path)}"
+    )
+    os.makedirs(OUT_DIR, exist_ok=True)
+    try:
+        os.replace(path, dest)
+    except OSError:
+        shutil.copy2(path, dest)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    try:
+        print(
+            f"[download] 采用浏览器原生下载真图（基准=默认下载目录）{dest} ({os.path.getsize(dest)} bytes)"
+        )
+    except OSError:
+        pass
+    return dest
+
+
 def gemini_download_full(src, session):
-    # 只走全尺寸路径，且以真实像素为准：点图片右上角下载按钮 → 捕获候选 URL →
-    # 页面内探测每个候选的分辨率，短边 >= FULL_MIN_SIDE 才准下载；落盘后再解析
-    # 文件头终审，不达标删文件视为失败。不达标就一直等/补点按钮直到超时返回
-    # None——宁可失败也不交小图
+    # 全尺寸下载，真图基准 = 浏览器原生下载（大小与用户默认下载目录那份一致）：
+    # 点下载按钮时不拦截原生落盘，把下载目录接管到受控目录，轮询收编原生真图——
+    # 它不被 fife 加水印/降级，最接近用户要的“原图”。
+    # 原生始终没来（接管失败/非 a[download] 路径）才退回：捕获候选 URL → 页面内
+    # 探测每个候选分辨率，全候选取短边最大；随后页面 fetch / CDP 网络两通道各自
+    # 取回，落盘后解析文件头比较保留更大那份。探测/终审只用于择优，不按阈值删除。
 
     def ordered_urls(cands):
         # anchor（a[download] 点击）最可信，同类取最新捕获优先
@@ -828,15 +948,20 @@ def gemini_download_full(src, session):
 
     try:
         _install_download_capture(session)
+        _configure_native_download(session)
+        before = _native_snapshot()
         r = _click_image_download(session, src)
         print(
             f"[download] image download button: {json.dumps(r.get('data') or {}, ensure_ascii=False)[:200]}"
         )
         probed = {}
-        href = None
+        retry_at = {}
+        best_url = None
+        best_side = 0
         start = time.time()
         next_click = start + 15
-        while time.time() - start < 60:
+        last_new = time.time()
+        while time.time() - start < 100:
             try:
                 val = evaluate("JSON.stringify(window.__wb_dls || [])", session)[
                     "data"
@@ -845,42 +970,89 @@ def gemini_download_full(src, session):
             except Exception:
                 cands = []
             for u in ordered_urls(cands):
-                if u not in probed:
-                    d = _probe_dims(u, session)
-                    probed[u] = d
-                    print(f"[download] probe {(u or '')[:80]} -> {d}")
-                    if d and min(d) >= FULL_MIN_SIDE:
-                        href = u
-                        break
-            if href:
+                if u in probed:
+                    continue
+                d = _probe_dims(u, session)
+                probed[u] = d
+                if not d:
+                    # 大图解码/加载可能超时，先标记，稍后重试一次
+                    retry_at[u] = time.time()
+                    continue
+                last_new = time.time()
+                side = min(d)
+                if side > best_side:
+                    best_side = side
+                    best_url = u
+                    print(f"[download] new best probe {(u or '')[:80]} -> {d}")
+            # 对一次探测失败的候选延迟重试
+            for u, t0 in list(retry_at.items()):
+                if time.time() - t0 < 5 or probed.get(u):
+                    continue
+                del retry_at[u]
+                d = _probe_dims(u, session)
+                if not d:
+                    continue
+                probed[u] = d
+                last_new = time.time()
+                side = min(d)
+                if side > best_side:
+                    best_side = side
+                    best_url = u
+                    print(f"[download] retry probe ok {(u or '')[:80]} -> {d}")
+            # 原生下载到位即收编（真图基准，最先返回）
+            native = _pick_native_new(before)
+            if native:
+                print("[download] 原生下载真图到位，直接收编")
+                return _adopt_native(native)
+            # 候选收敛且已给足原生下载时间，进入两通道兜底
+            if best_url and time.time() - last_new > 8 and time.time() - start > 20:
+                print("[download] 原生未到 & 候选安静 -> 走通道兜底")
                 break
             # 图片卡片刚生成时下载按钮可能尚未挂好导致点击落空，定期补点
             if time.time() > next_click:
                 next_click += 15
-                print("[download] no full-res candidate yet, re-click download button")
+                print("[download] still waiting, re-click download button")
                 _click_image_download(session, src)
             time.sleep(0.5)
-        print(f"[download] full-res url picked: {(href or '')[:100]}")
-        if not href:
-            print("[download] 未捕获达到全尺寸标准的 URL（小图兜底已禁用），放弃")
+        # 轮询结束，原生若刚到位仍优先
+        native = _pick_native_new(before)
+        if native:
+            print("[download] 轮询结束前原生下载到位，直接收编")
+            return _adopt_native(native)
+        if not best_url:
+            print("[download] 未捕获任何候选 URL 且未收到原生下载，放弃")
             return None
+        print(f"[download] 兜底：best candidate {best_side}px {(best_url or '')[:100]}")
+        if best_side < FULL_MIN_SIDE:
+            print(
+                f"[download] 最大候选仅 {best_side}px（< {FULL_MIN_SIDE}px），"
+                "不删除，两通道取回后按像素取大"
+            )
         # 同一个全尺寸 URL 的两种传输通道（页面 fetch / CDP 网络），不是换图源；
-        # 落盘后按文件头尺寸终审，短边不达标删掉当失败
+        # 两通道都跑，落盘后比较像素保留大的，避免单通道被 fife 重定向/缓存降级
+        outs = []
         for fetcher in (download_via_fetch, download_via_network):
-            out = fetcher(href, session)
-            if not out:
-                continue
-            side = _image_min_side(out)
-            if side is not None and side < FULL_MIN_SIDE:
-                print(f"[download] 文件仅 {side}px < {FULL_MIN_SIDE}px，丢弃")
-                try:
-                    os.remove(out)
-                except OSError:
-                    pass
-                continue
-            return out
-        print("[download] 全尺寸下载终审未通过，放弃")
-        return None
+            out = fetcher(best_url, session)
+            if out:
+                outs.append(out)
+        if not outs:
+            print("[download] 两个传输通道都失败，放弃")
+            return None
+        if len(outs) == 1:
+            print(f"[download] 仅单通道成功，直接采用 {outs[0]}")
+            return outs[0]
+        a, b = outs
+        keep, drop = (a, b) if _file_bigness(a) >= _file_bigness(b) else (b, a)
+        drop_info = _file_bigness(drop)
+        keep_info = _file_bigness(keep)
+        try:
+            os.remove(drop)
+            print(
+                f"[download] 两通道取大：保留 {keep} {keep_info}，删除较小 {drop} {drop_info}"
+            )
+        except OSError:
+            print(f"[download] 两通道取大：保留 {keep}（删除 {drop} 失败，忽略）")
+        return keep
     except Exception as exc:
         print(f"[download] 全尺寸下载失败：{exc}")
         return None
