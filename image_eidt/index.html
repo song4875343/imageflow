@@ -970,10 +970,10 @@
     function resetGenerationPreviews() {
         hideMaskOverlay();
         maskOverlayData = null;
+        setFineTunePreview(null, {render:false});
         clearGenerationPreviewCards();
         expandedBlendGroups.clear();
         selectedPreviewId = null;
-        fineTunePreviewId = null;
         annotationMode = null;
         maskBrushMode = null;
         maskPatchSelection = null;
@@ -1274,7 +1274,7 @@
             );
         });
         selectedPreviewId = generationPreviewObjects.has(previousSelectedId) ? previousSelectedId : null;
-        fineTunePreviewId = generationPreviewObjects.has(fineTunePreviewId) ? fineTunePreviewId : null;
+        setFineTunePreview(generationPreviewObjects.has(fineTunePreviewId) ? fineTunePreviewId : null, {render:false});
         document.getElementById('preview-selection-toolbar').hidden = !selectedPreviewId;
         syncGenerationPreviewVisibility();
         updatePreviewToolbar();
@@ -1386,10 +1386,10 @@
         stopAnnotationMode();
         stopMaskBrush();
         stopPatchBrush();
-        if (fineTunePreviewId && fineTunePreviewId !== previewId) fineTunePreviewId = null;
         const entry = resolveLivePreviewEntry(previewId);
         const objects = previewEntryObjects(entry);
         if (!entry || !objects.length) return;
+        if (fineTunePreviewId && fineTunePreviewId !== previewId) setFineTunePreview(null, {render:false});
         if (entry.isSelectionMask) {
             showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || entry.sourceImageData || null);
         } else {
@@ -1400,10 +1400,9 @@
         if (entry.isSelectionMask) {
             // The visible mask is rendered by the isolated overlay; keep its
             // hidden guide objects out of Fabric's active selection box.
-        } else if (objects.length === 1) {
-            objects[0].set({selectable:true,evented:true});
+        } else if (objects.length === 1 && (!previewLayerReorderable(objects[0]) || fineTunePreviewId === previewId || entry.isMain)) {
             canvas.setActiveObject(objects[0]);
-        } else {
+        } else if (objects.length > 1 && (fineTunePreviewId === previewId || objects.every(object => !previewLayerReorderable(object)))) {
             const selection = new fabric.ActiveSelection(objects, {canvas});
             canvas.setActiveObject(selection);
         }
@@ -1413,17 +1412,18 @@
         canvas.requestRenderAll();
     }
 
-function applyFineTuneLocks(entry) {
+    function applyFineTuneLocks(entry) {
         // 参考图/生成图层：未开启“微调”时为锁定态（不可拖动/缩放），
         // 开启微调才解锁；标注/文字/选区等固定层带对象不在此列
         if (!entry || entry.isMain) return;
         const locked = fineTunePreviewId !== entry.previewId;
         previewEntryObjects(entry).forEach(obj => {
             if (!obj?.set || !previewLayerReorderable(obj)) return;
+            const interactive = !locked && obj.visible !== false;
             obj.set({
-                selectable: !locked,
-                evented: !locked,
-                hasControls: !locked,
+                selectable: interactive,
+                evented: interactive,
+                hasControls: interactive,
                 lockMovementX: locked,
                 lockMovementY: locked,
                 lockScalingX: locked,
@@ -1433,28 +1433,39 @@ function applyFineTuneLocks(entry) {
         });
     }
 
+    function setFineTunePreview(previewId, options={}) {
+        const requested = previewId ? generationPreviewObjects.get(previewId) : null;
+        const nextId = requested && !requested.isMain && previewEntryObjects(requested).some(previewLayerReorderable)
+            ? requested.previewId : null;
+        const changed = fineTunePreviewId !== nextId;
+        fineTunePreviewId = nextId;
+        if (changed) canvas?.discardActiveObject();
+        generationPreviewObjects.forEach(applyFineTuneLocks);
+        syncGenerationPreviewVisibility();
+        const activeEntry = nextId ? generationPreviewObjects.get(nextId) : null;
+        const activeObjects = previewEntryObjects(activeEntry);
+        if (options.activate && activeObjects.length && canvas) {
+            canvas.discardActiveObject();
+            if (activeObjects.length === 1) canvas.setActiveObject(activeObjects[0]);
+            else canvas.setActiveObject(new fabric.ActiveSelection(activeObjects, {canvas}));
+        }
+        if (options.render !== false) canvas?.requestRenderAll();
+        return activeEntry;
+    }
+
     function toggleFineTune(previewId) {
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
         if (!entry || entry.isMain || !objects.length) return;
         if (maskPatchSelection) clearMaskPatchSourceSelection();
+        if (maskCropSelection) clearMaskCropSourceSelection();
         if (fineTunePreviewId === previewId) {
-            fineTunePreviewId = null;
-            applyFineTuneLocks(entry);
-            canvas.discardActiveObject();
-            syncGenerationPreviewVisibility();
+            setFineTunePreview(null);
             setExpertStatus('已退出图层微调（图层已锁定，需开启微调才可移动/缩放）', '#dcdcaa');
             return;
         }
         selectGenerationPreview(previewId);
-        fineTunePreviewId = previewId;
-        applyFineTuneLocks(entry);
-        const first = previewEntryObjects(entry)[0];
-        if (first && first.canvas === canvas) {
-            canvas.discardActiveObject();
-            canvas.setActiveObject(first);
-        }
-        syncGenerationPreviewVisibility();
+        setFineTunePreview(previewId, {activate:true});
         setExpertStatus('图层微调已开启：可拖动/缩放，或用方向键每次微移 1 像素', '#dcdcaa');
     }
 
@@ -1593,7 +1604,7 @@ const thumbnail = document.createElement('img');
             return;
         }
         const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
-        if (entries.some(item => item.previewId === fineTunePreviewId)) fineTunePreviewId = null;
+        if (entries.some(item => item.previewId === fineTunePreviewId)) setFineTunePreview(null, {render:false});
         if (entries.includes(patchEditEntry)) stopPatchBrush();
         suppressPreviewCardSync = true;
         deletedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
@@ -2030,7 +2041,7 @@ const thumbnail = document.createElement('img');
         }
         stopMaskBrush();
         stopAnnotationMode();
-        fineTunePreviewId = null;
+        setFineTunePreview(null, {render:false});
         maskPatchSelection = {maskPreviewId:entry.previewId};
         updatePreviewToolbar();
         setExpertStatus('请选择一个图片缩略图作为取图源', '#dcdcaa');
@@ -2056,7 +2067,7 @@ const thumbnail = document.createElement('img');
         stopPatchBrush();
         stopAnnotationMode();
         if (maskPatchSelection) clearMaskPatchSourceSelection();
-        fineTunePreviewId = null;
+        setFineTunePreview(null, {render:false});
         maskCropSelection = {maskPreviewId: entry.previewId};
         updatePreviewToolbar();
         setExpertStatus('请选择一张图片缩略图作为蒙板取图源（取图源需为主图之外的单张图片）', '#dcdcaa');
@@ -2218,7 +2229,7 @@ const thumbnail = document.createElement('img');
         stopMaskBrush();
         stopAnnotationMode();
         stopExpertSelectionDrawing();
-        fineTunePreviewId = null;
+        setFineTunePreview(null, {render:false});
         patchEditEntry = entry;
         patchEditBrushMode = mode === 'subtract' ? 'subtract' : 'add';
         initPatchEditResources(entry);
@@ -2993,7 +3004,7 @@ const thumbnail = document.createElement('img');
                         e.preventDefault();
                         return;
                     }
-                    fineTunePreviewId = null;
+                    setFineTunePreview(null, {render:false});
                     syncGenerationPreviewVisibility();
                 }
                 let activeObjects = (canvas.getActiveObjects && canvas.getActiveObjects()) || [];
@@ -3910,6 +3921,7 @@ const thumbnail = document.createElement('img');
                 obj.evented = obj.selectable;
             }
         });
+        generationPreviewObjects.forEach(applyFineTuneLocks);
         if (!visible) canvas.discardActiveObject();
         syncGenerationPreviewVisibility();
         canvas.requestRenderAll(); canvas.renderAll();
@@ -3947,6 +3959,7 @@ const thumbnail = document.createElement('img');
             }
             if (!obj.visible) { obj.selectable = false; obj.evented = false; }
         });
+        generationPreviewObjects.forEach(applyFineTuneLocks);
         canvas.requestRenderAll();
 
         // 2. 更新新建按钮文字 (保持不变)
