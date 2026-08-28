@@ -4,12 +4,82 @@ import base64
 import io
 import json
 import logging
+import subprocess
 import threading
 import uuid
 from pathlib import Path
 
 import webview
 from PIL import Image, ImageChops
+
+
+def _notify_windows(title, message):
+    def _run():
+        t = str(title).strip() or "ImageFlow"
+        m = str(message).strip() or ""
+        try:
+            from winotify import Notification  # type: ignore[import-not-found]
+
+            toast = Notification(app_id="ImageFlow", title=t, msg=m, duration="short")
+            toast.show()
+            return
+        except Exception:
+            pass
+        try:
+            from plyer import notification as plyer_notification  # type: ignore[import-not-found]
+
+            plyer_notification.notify(
+                title=t, message=m, app_name="ImageFlow", timeout=5
+            )
+            return
+        except Exception:
+            pass
+        try:
+            esc = lambda s: s.replace("'", "''").replace("\r", " ").replace("\n", " ")
+            ps = (
+                "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] | Out-Null;"
+                f"$t=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+                f"$n=$t.GetElementsByTagName('text');"
+                f"$n.Item(0).AppendChild($t.CreateTextNode('{esc(t)}'))|Out-Null;"
+                f"$n.Item(1).AppendChild($t.CreateTextNode('{esc(m)}'))|Out-Null;"
+                f"$v=[Windows.UI.Notifications.ToastNotification]::new($t);"
+                f"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ImageFlow').Show($v)"
+            )
+            if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                subprocess.Popen(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        ps,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+                )
+            else:
+                subprocess.Popen(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        ps,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        except Exception:
+            pass
+
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        pass
+
 
 LOG_PATH = Path(__file__).with_name("image_edit_debug.log")
 logging.basicConfig(
@@ -490,6 +560,7 @@ class ImageEditorAPI:
         job_id = str(job_id or uuid.uuid4().hex)
         event = threading.Event()
         self._cancel_events[job_id] = event
+        selected_model = {"id": "", "model": str(model or ""), "provider": ""}
         try:
             if load_generation_mode() == "webridge":
                 webridge_site = load_webridge_site()
@@ -573,9 +644,19 @@ class ImageEditorAPI:
                     }
                 )
             if len(results) == 1:
-                return json.dumps(results[0])
-            return json.dumps({"results": results}, ensure_ascii=False)
+                payload = json.dumps(results[0])
+            else:
+                payload = json.dumps({"results": results}, ensure_ascii=False)
+            _notify_windows(
+                "生图完成",
+                f"成功生成 {len(results)} 张 · {selected_model.get('model', '')} · {w}x{h}",
+            )
+            return payload
         except OutputSizeMismatch as exc:
+            _notify_windows(
+                "生图完成（需确认）",
+                f"尺寸不一致：请求 {exc.requested_size[0]}x{exc.requested_size[1]} 实际 {exc.actual_size[0]}x{exc.actual_size[1]}",
+            )
             has_selection_mask = bool(selection_mask)
             mismatch_results = []
             for mismatch_image in exc.images:
@@ -616,7 +697,12 @@ class ImageEditorAPI:
                 payload["results"] = mismatch_results
             return json.dumps(payload, ensure_ascii=False)
         except Exception as exc:
-            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            msg = str(exc)
+            if "已终止" in msg or "cancel" in msg.lower():
+                _notify_windows("生图已取消", msg[:120])
+            else:
+                _notify_windows("生图失败", msg[:180])
+            return json.dumps({"error": msg}, ensure_ascii=False)
         finally:
             self._cancel_events.pop(job_id, None)
 

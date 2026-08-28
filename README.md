@@ -16,6 +16,7 @@
 - 返回尺寸与请求不一致时可选择「使用返回尺寸 / 强制缩放一致 / 放弃」
 - 蒙版与高级蒙版、颜色吸管、填充、文字标注、画笔标注（涂鸦 / PLINE线 / 矩形 / 箭头 四模式，图标化屏幕菜单）、标记点、撤销/重做（最近 20 步）
 - 深色 / 浅色主题，切换后持久化到 `image_eidt/theme.json`
+- Windows Toast 通知：生图成功/失败/尺寸不一致/已取消均通过系统通知提醒，无需守在窗口前
 - 模型管理：添加、修改、删除、切换多个服务商的图像模型
 
 ### 空间设计（EROOM）
@@ -68,7 +69,7 @@ uv run python image_eidt/app.py
 不使用 uv 时，手动安装 `pyproject.toml` 中列出的依赖：
 
 ```powershell
-pip install pywebview Pillow numpy opencv-python requests openai
+pip install pywebview Pillow numpy opencv-python requests openai winotify
 python image_eidt/app.py
 ```
 
@@ -102,7 +103,7 @@ python image_eidt/app.py
 
 ## 技术栈
 
-- 后端：Python 3.9+、pywebview、Pillow、numpy、opencv-python、requests、openai
+- 后端：Python 3.9+、pywebview、Pillow、numpy、opencv-python、requests、openai、winotify（Windows 通知）
 - 前端：原生 HTML/CSS/JS、fabric.js 5.3（CDN）、three.js 0.162 + OrbitControls（CDN）
 
 ## 安全提醒
