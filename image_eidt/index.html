@@ -70,6 +70,7 @@
         #mask-edit-overlay { position:absolute; display:none; pointer-events:none; z-index:4; }
         #mask-edit-overlay.is-visible { display:block; opacity:.72; }
         #mask-edit-overlay.is-brush-active { pointer-events:auto; cursor:crosshair; }
+        #mask-edit-overlay.is-shape-active { pointer-events:none; cursor:crosshair; }
         #generation-preview { position:absolute; left:332px; right:20px; bottom:20px; height:12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border:1px solid #3a3d41; border-radius:12px; background:linear-gradient(180deg,rgba(32,34,37,.94),rgba(23,25,27,.94)); box-shadow:0 10px 30px rgba(0,0,0,.35); backdrop-filter:blur(14px); z-index:20; }
         .preview-heading { width:68px; flex:0 0 68px; display:flex; flex-direction:column; justify-content:center; color:#d8dde3; font-size:12px; letter-spacing:.08em; }
         .preview-heading small { margin-top:5px; color:#737b84; letter-spacing:0; }
@@ -536,15 +537,7 @@
         <div class="control-group" style="margin-top:10px;">
             <label class="control-label">修改范围</label>
             <div id="local-edit-controls">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">
-                <label class="sidebar-btn secondary" style="padding:6px;text-align:center;cursor:pointer;"><input type="radio" name="expert-selection-mode" value="rect" checked onchange="updateExpertSelectionMode()"> 框选</label>
-                <label class="sidebar-btn secondary" style="padding:6px;text-align:center;cursor:pointer;"><input type="radio" name="expert-selection-mode" value="brush" onchange="updateExpertSelectionMode()"> 涂抹</label>
-            </div>
-            <div id="expert-brush-size-row" style="display:none;margin-bottom:8px;">
-                <label class="control-label">画笔大小：<span id="expert-brush-size-value">32</span></label>
-                <input id="expert-brush-size" type="range" min="4" max="160" value="32" style="width:100%;" oninput="updateExpertBrushSize(this.value)">
-            </div>
-            <button id="expert-select-region" class="sidebar-btn secondary" style="width:100%;" onclick="startExpertSelection()">绘制蒙版</button>
+            <div class="hint-box">请在画布预览栏选择蒙版工具，使用涂抹、橡皮擦、矩形或 PLINE 统一调整蒙版。</div>
             </div>
             <div id="expert-scope-status" class="hint-box">整张修改：蒙版自动与主图尺寸一致</div>
             <label class="control-label" style="margin-top:11px; margin-bottom:5px;">生成尺寸</label>
@@ -601,8 +594,7 @@
             <button class="layer-action icon-btn danger" title="删除" aria-label="删除" onclick="deleteSelectedPreviewLayer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/><path d="M10 11v6M14 11v6"/></svg></button>
             <button class="layer-action icon-btn" title="置为主图" aria-label="置为主图" onclick="setSelectedLayerAsMain()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/></svg></button>
             <button id="annotation-brush-button" class="layer-action icon-btn annotation-action" title="画笔" aria-label="画笔" onclick="startAnnotationBrush()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.07"/><path d="M9.06 11.9c-2.3.7-4.2 2.6-4.9 4.9-.4 1.4-1.5 2.5-2.9 2.9 1 .8 2.3 1.3 3.7 1.3 3.2 0 5.8-2.6 5.8-5.8 0-1.4-.5-2.7-1.3-3.7z"/></svg></button>
-            <button id="mask-paint-button" class="layer-action icon-btn annotation-action" title="涂抹（增加蒙版）" aria-label="涂抹" hidden onclick="startMaskBrush('add')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c2.5-1.2 4-3.8 4.5-6.5.3-1.8 1.2-3 2.5-3.5-1.5-1-3.7-.6-5 .9-2 2.3-2.6 6-2 9.1z" fill="currentColor" stroke="none"/><path d="M14 6h6M17 3v6" stroke-width="2"/></svg></button>
-            <button id="mask-erase-button" class="layer-action icon-btn annotation-action" title="橡皮擦（消减蒙版）" aria-label="橡皮擦" hidden onclick="startMaskBrush('subtract')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3.6 15.1a1.5 1.5 0 0 1 0-2.1L13 3.6a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L13 18.5"/><path d="M6.5 10.5l7 7"/></svg></button>
+            <button id="mask-tool-button" class="layer-action icon-btn annotation-action" title="蒙版" aria-label="蒙版" onclick="toggleMaskTool()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l4 2v4l-4 2-4-2V5l4-2z"/><path d="M12 11l4 2v4l-4 2-4-2v-4l4-2z"/><path d="M8 5l4 2 4-2"/><path d="M8 13l4 2 4-2" opacity=".7"/></svg></button>
             <button id="mask-patch-button" class="layer-action icon-btn annotation-action" title="生成补丁" aria-label="生成补丁" hidden onclick="startMaskPatchSourceSelection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3.4 2.6"/><path d="M12 9.5v5M9.5 12h5"/></svg></button>
             <button id="mask-crop-button" class="layer-action icon-btn annotation-action" title="蒙板取图" aria-label="蒙板取图" hidden onclick="startMaskCropSourceSelection()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v16a2 2 0 0 0 2 2h14"/><path d="M18 22V6a2 2 0 0 0-2-2H2"/><path d="M9 6v.5"/></svg></button>
             <button id="annotation-text-button" class="layer-action icon-btn annotation-action" title="文字" aria-label="文字" onclick="addAnnotationText()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4.5h14V6"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
@@ -618,6 +610,16 @@
             </div>
             <label for="preview-brush-size">线宽 <span id="preview-brush-size-value">8</span> px</label>
             <input id="preview-brush-size" type="range" min="1" max="160" value="8" oninput="updatePreviewBrushSize(this.value)">
+        </div>
+        <div id="mask-tool-row" class="preview-brush-size-row" hidden>
+            <div class="preview-brush-mode-group">
+                <button type="button" class="preview-brush-mode" data-mask-kind="add" title="涂抹" aria-label="涂抹" onclick="setMaskToolKind('add')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c2.5-1.2 4-3.8 4.5-6.5.3-1.8 1.2-3 2.5-3.5-1.5-1-3.7-.6-5 .9-2 2.3-2.6 6-2 9.1z" fill="currentColor" stroke="none"/><path d="M14 6h6M17 3v6" stroke-width="2"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-mask-kind="subtract" title="橡皮擦" aria-label="橡皮擦" onclick="setMaskToolKind('subtract')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3.6 15.1a1.5 1.5 0 0 1 0-2.1L13 3.6a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L13 18.5"/><path d="M6.5 10.5l7 7"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-mask-kind="pline" title="PLINE线区域" aria-label="PLINE线区域" onclick="setMaskToolKind('pline')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 18l6-9 5 4 4-7"/><circle cx="5" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="13" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-mask-kind="rect" title="矩形范围" aria-label="矩形范围" onclick="setMaskToolKind('rect')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+            </div>
+            <label for="mask-brush-size">笔宽 <span id="mask-brush-size-value">8</span> px</label>
+            <input id="mask-brush-size" type="range" min="1" max="160" value="8" oninput="updatePreviewBrushSize(this.value)">
         </div>
     </div>
     <div id="save-choice-dialog" class="save-choice-overlay" hidden onclick="handleSaveChoiceBackdrop(event)">
@@ -710,6 +712,7 @@
     let maskOverlayGuideStates = new Map();
     let maskOverlayActive = false;
     let maskOverlayData = null;
+    let maskOverlayRenderVersion = 0;
     let maskOverlayStrokeActive = false;
     let maskOverlayLastPoint = null;
     let maskOverlayEventsBound = false;
@@ -729,6 +732,12 @@
     let previewBrushSize = 8;
     let previewClickSuppressUntil = 0; // 拖拽缩略图结束时抑制误点击选中
     let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
+    let maskToolActive = false;
+    let maskToolKind = 'add';
+    let maskPlinePoints = [];
+    let maskRectDraft = null;
+    let maskRectSnapshot = null;
+    let maskPlineSnapshot = null;
     let plinePoints = [];        // PLINE 已确认节点
     let plinePreview = null;     // PLINE 预览线
     let plineStartDot = null;    // PLINE 起点提示圆点
@@ -976,6 +985,7 @@
         selectedPreviewId = null;
         annotationMode = null;
         maskBrushMode = null;
+        maskToolActive = false; maskPlinePoints = []; maskRectDraft = null;
         maskPatchSelection = null;
         maskPatchBusy = false;
         maskCropSelection = null;
@@ -996,6 +1006,10 @@
         const input = document.getElementById('preview-brush-size');
         const label = document.getElementById('preview-brush-size-value');
         if (input && Number(input.value) !== previewBrushSize) input.value = String(previewBrushSize);
+        const maskInput = document.getElementById('mask-brush-size');
+        const maskLabel = document.getElementById('mask-brush-size-value');
+        if (maskInput && Number(maskInput.value) !== previewBrushSize) maskInput.value = String(previewBrushSize);
+        if (maskLabel) maskLabel.innerText = Math.round(previewBrushSize);
         if (label) label.innerText = Math.round(previewBrushSize);
         if (canvas?.freeDrawingBrush && (annotationMode === 'brush' || maskBrushMode)) canvas.freeDrawingBrush.width = previewBrushSize;
         syncAnnotationDraftStyle();
@@ -1005,33 +1019,20 @@
         const entry = selectedPreviewEntry();
         const isMask = Boolean(entry?.isSelectionMask);
         const isEditablePatch = Boolean(entry?.isPatch && entry?.patchSourceImageData);
-        const showPaint = isMask || isEditablePatch;
-        const isBrush = annotationMode === 'brush' || Boolean(maskBrushMode) || Boolean(patchEditBrushMode);
-        const paintButton = document.getElementById('mask-paint-button');
-        const eraseButton = document.getElementById('mask-erase-button');
-        paintButton?.toggleAttribute('hidden', !showPaint);
-        eraseButton?.toggleAttribute('hidden', !showPaint);
-        if (isEditablePatch) {
-            paintButton?.setAttribute('title', '涂抹（增加补丁内容）');
-            paintButton?.setAttribute('aria-label', '涂抹补丁');
-            eraseButton?.setAttribute('title', '橡皮（消除补丁内容）');
-            eraseButton?.setAttribute('aria-label', '橡皮擦补丁');
-        } else if (isMask) {
-            paintButton?.setAttribute('title', '涂抹（增加蒙版）');
-            paintButton?.setAttribute('aria-label', '涂抹');
-            eraseButton?.setAttribute('title', '橡皮擦（消减蒙版）');
-            eraseButton?.setAttribute('aria-label', '橡皮擦');
-        }
+        const canEditMask = Boolean(isMask || isEditablePatch || mainPreviewEntry());
+        document.getElementById('mask-tool-button')?.toggleAttribute('hidden', !canEditMask);
         document.getElementById('mask-patch-button')?.toggleAttribute('hidden', !isMask);
         document.getElementById('mask-crop-button')?.toggleAttribute('hidden', !isMask);
-        paintButton?.classList.toggle('is-active', maskBrushMode === 'add' || patchEditBrushMode === 'add');
-        eraseButton?.classList.toggle('is-active', maskBrushMode === 'subtract' || patchEditBrushMode === 'subtract');
+        document.getElementById('mask-tool-button')?.classList.toggle('is-active', maskToolActive);
         document.getElementById('mask-patch-button')?.classList.toggle('is-active', Boolean(maskPatchSelection));
         document.getElementById('mask-crop-button')?.classList.toggle('is-active', Boolean(maskCropSelection));
-        const sizeRow = document.getElementById('preview-brush-size-row');
-        if (sizeRow) sizeRow.hidden = !isBrush;
+        const annotationBrushRow = document.getElementById('preview-brush-size-row');
+        if (annotationBrushRow) annotationBrushRow.hidden = annotationMode !== 'brush';
         const modeGroup = document.getElementById('preview-brush-mode-group');
         if (modeGroup) modeGroup.hidden = annotationMode !== 'brush';
+        const maskRow = document.getElementById('mask-tool-row');
+        if (maskRow) maskRow.hidden = !maskToolActive;
+        document.querySelectorAll('[data-mask-kind]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.maskKind === maskToolKind));
         document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
     }
 
@@ -1043,6 +1044,23 @@
         return expertSelectionGuides()
             .map(guide => guide.data?.maskOverlayData)
             .find(Boolean) || null;
+    }
+
+    function maskOverlayPixelBounds() {
+        if (!maskOverlayCanvas || !maskOverlayContext) return null;
+        const width = maskOverlayCanvas.width;
+        const height = maskOverlayCanvas.height;
+        if (!width || !height) return null;
+        const data = maskOverlayContext.getImageData(0, 0, width, height).data;
+        let minX = width, minY = height, maxX = -1, maxY = -1;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                if (data[(y * width + x) * 4 + 3] <= 8) continue;
+                if (x < minX) minX = x; if (y < minY) minY = y;
+                if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+            }
+        }
+        return maxX < 0 ? null : {x:minX, y:minY, w:maxX - minX + 1, h:maxY - minY + 1};
     }
 
     function updateMaskOverlayTransform() {
@@ -1087,8 +1105,13 @@
         const overlay = document.getElementById('mask-edit-overlay');
         if (overlay) overlay.classList.remove('is-visible', 'is-brush-active');
         maskOverlayActive = false;
+        maskOverlayRenderVersion++;
         maskOverlayStrokeActive = false;
         maskOverlayLastPoint = null;
+        maskPlinePoints = [];
+        maskRectDraft = null;
+        maskRectSnapshot = null;
+        maskPlineSnapshot = null;
         maskOverlayGuideStates.forEach((visible, object) => { if (object?.canvas) object.visible = visible; });
         maskOverlayGuideStates.clear();
         canvas?.requestRenderAll();
@@ -1104,21 +1127,23 @@
             maskOverlayObjects().forEach(object => { object.visible = false; });
         }
         context.clearRect(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+        overlay.classList.add('is-visible');
+        maskOverlayActive = true;
+        updateMaskOverlayTransform();
+        canvas?.requestRenderAll();
+        const src = maskData || persistedMaskOverlayData() || exportExpertSelectionMask()?.maskData || '';
+        if (!src) return true;
+        const renderVersion = ++maskOverlayRenderVersion;
         const image = new Image();
         image.onload = () => {
+            if (renderVersion !== maskOverlayRenderVersion) return;
             context.clearRect(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
             context.drawImage(image, 0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
             tintMaskOverlay();
-            overlay.classList.add('is-visible');
-            maskOverlayActive = true;
-            updateMaskOverlayTransform();
             canvas?.requestRenderAll();
         };
-        image.onerror = () => {
-            maskOverlayGuideStates.forEach((visible, object) => { if (object?.canvas) object.visible = visible; });
-            maskOverlayGuideStates.clear();
-        };
-        image.src = maskData || exportExpertSelectionMask()?.maskData || '';
+        image.onerror = () => {};
+        image.src = src;
         return true;
     }
 
@@ -1180,6 +1205,7 @@
         context.lineTo(to.x, to.y);
         context.stroke();
         context.restore();
+        maskOverlayRenderVersion++;
         document.getElementById('mask-edit-overlay')?.classList.add('is-visible');
     }
 
@@ -1204,7 +1230,9 @@
         if (!overlay) return;
         maskOverlayEventsBound = true;
         overlay.addEventListener('pointerdown', event => {
-            if (!maskBrushMode || !maskOverlayActive) return;
+            // The overlay owns only freehand add/subtract strokes. Shape tools
+            // deliberately use Fabric's canvas event chain below.
+            if (!maskBrushMode || !maskOverlayActive || !maskOverlayCanvas) return;
             event.preventDefault();
             maskOverlayPointerId = event.pointerId;
             overlay.setPointerCapture?.(event.pointerId);
@@ -1213,7 +1241,7 @@
             drawMaskOverlaySegment(maskOverlayLastPoint, maskOverlayLastPoint);
         });
         overlay.addEventListener('pointermove', event => {
-            if (!maskOverlayStrokeActive || event.pointerId !== maskOverlayPointerId) return;
+            if (!maskOverlayStrokeActive || event.pointerId !== maskOverlayPointerId || !maskBrushMode) return;
             event.preventDefault();
             const point = maskOverlayPoint(event);
             drawMaskOverlaySegment(maskOverlayLastPoint, point);
@@ -1226,6 +1254,7 @@
             if (event.pointerId === maskOverlayPointerId) finishMaskOverlayStroke();
         });
         overlay.addEventListener('lostpointercapture', () => finishMaskOverlayStroke());
+        overlay.addEventListener('contextmenu', e => { if (maskToolActive && (maskToolKind === 'pline' || maskToolKind === 'rect')) e.preventDefault(); });
     }
 
     function previewLabelFromObjects(previewId, objects) {
@@ -1383,6 +1412,20 @@
             generateMaskCropFromSource(previewId);
             return;
         }
+        if (selectedPreviewId === previewId && !document.getElementById('preview-selection-toolbar')?.hidden) {
+            selectedPreviewId = null;
+            hideMaskOverlay();
+            stopAnnotationMode();
+            stopMaskBrush();
+            stopPatchBrush();
+            maskToolActive = false;
+            canvas.discardActiveObject();
+            document.getElementById('preview-selection-toolbar').hidden = true;
+            syncGenerationPreviewVisibility();
+            updatePreviewToolbar();
+            canvas.requestRenderAll();
+            return;
+        }
         stopAnnotationMode();
         stopMaskBrush();
         stopPatchBrush();
@@ -1394,6 +1437,7 @@
             showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || entry.sourceImageData || null);
         } else {
             hideMaskOverlay();
+            maskToolActive = false;
         }
         selectedPreviewId = previewId;
         canvas.discardActiveObject();
@@ -1778,6 +1822,7 @@ const thumbnail = document.createElement('img');
     function startAnnotationBrush() {
         if (!canvas) return;
         if (annotationMode === 'brush') { stopAnnotationMode(); setExpertStatus('已退出画笔选择模式', '#dcdcaa'); return; }
+        maskToolActive = false;
         stopMaskBrush();
         stopExpertSelectionDrawing();
         stopAnnotationMode();
@@ -1996,9 +2041,14 @@ const thumbnail = document.createElement('img');
     function stopMaskBrush() {
         if (!canvas) return;
         maskBrushMode = null;
+        maskToolActive = false;
         maskOverlayStrokeActive = false;
         maskOverlayLastPoint = null;
-        document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active');
+        maskPlinePoints = [];
+        maskRectDraft = null;
+        maskRectSnapshot = null;
+        maskPlineSnapshot = null;
+        document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active', 'is-shape-active');
         canvas.getObjects().forEach(object => { object.erasable = false; });
         if (annotationMode !== 'brush' && annotationMode !== 'text' && annotationMode !== 'marker') {
             canvas.isDrawingMode = false;
@@ -2014,21 +2064,212 @@ const thumbnail = document.createElement('img');
             startPatchBrush(mode);
             return;
         }
-        if (!canvas || !maskPreviewEntry()) return;
-        if (maskBrushMode === mode) { stopMaskBrush(); setExpertStatus('已退出蒙版编辑', '#dcdcaa'); return; }
+        if (!canvas) return;
+        if (!maskPreviewEntry()) {
+            const created = ensureMaskLayer();
+            if (created) selectGenerationPreview(created.previewId);
+        }
+        if (!maskPreviewEntry()) return;
+        if (maskBrushMode === mode && maskToolKind === mode) { stopMaskBrush(); setExpertStatus('已退出蒙版编辑', '#dcdcaa'); return; }
         stopAnnotationMode();
         stopExpertSelectionDrawing();
         stopPatchBrush();
-        showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || maskPreviewEntry().sourceImageData || null);
+        maskPlinePoints = [];
+        maskRectDraft = null;
+        maskRectSnapshot = null;
+        maskPlineSnapshot = null;
+        ensureMaskGuidesForOverlay();
+        showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || (maskPreviewEntry()?.sourceImageData) || null);
         maskBrushMode = mode === 'subtract' ? 'subtract' : 'add';
+        maskToolKind = maskBrushMode;
+        maskToolActive = true;
         bindMaskOverlayEvents();
         canvas.discardActiveObject();
         canvas.selection = false;
         canvas.isDrawingMode = false;
         canvas.defaultCursor = 'crosshair';
-        document.getElementById('mask-edit-overlay')?.classList.add('is-brush-active');
+        const overlay = document.getElementById('mask-edit-overlay');
+        overlay?.classList.remove('is-shape-active');
+        overlay?.classList.add('is-brush-active');
         updatePreviewToolbar();
         setExpertStatus(maskBrushMode === 'subtract' ? '橡皮擦已开启：在蒙版上涂抹以精细消减' : '涂抹已开启：在蒙版上涂抹以精细增加', '#4ec9b0');
+    }
+    function ensureMaskLayer() {
+        let entry = generationPreviewObjects.get('expert-selection-mask');
+        if (entry && previewEntryObjects(entry).length) return entry;
+        if (!canvas) return null;
+        ensureMaskOverlayCanvas();
+        if (!expertSelectionGuides().length) {
+            const guide = new fabric.Rect({left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,fill:'rgba(255,255,255,0)',stroke:'rgba(0,0,0,0)',strokeWidth:0,selectable:false,evented:false,data:{type:'expert-guide',maskOperation:'add'}});
+            expertRectGuides.push(guide);
+            canvas.add(guide);
+        }
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (ctx && !maskOverlayData && !persistedMaskOverlayData()) {
+            ctx.clearRect(0,0,maskOverlayCanvas.width,maskOverlayCanvas.height);
+            maskOverlayData = maskOverlayCanvas.toDataURL('image/png');
+            expertSelectionGuides().forEach(g=>{g.data=g.data||{};g.data.maskOverlayData=maskOverlayData;});
+        }
+        refreshExpertSelectionPreview();
+        entry = generationPreviewObjects.get('expert-selection-mask');
+        return entry;
+    }
+    function ensureMaskGuidesForOverlay() {
+        if (expertSelectionGuides().length) return;
+        const guide = new fabric.Rect({left:0,top:0,width:canvas.originalWidth,height:canvas.originalHeight,fill:'rgba(255,255,255,0)',stroke:'rgba(0,0,0,0)',strokeWidth:0,selectable:false,evented:false,data:{type:'expert-guide',maskOperation:'add'}});
+        expertRectGuides.push(guide);
+        canvas.add(guide);
+    }
+    function toggleMaskTool() {
+        const existing = generationPreviewObjects.get('expert-selection-mask');
+        const hasMask = Boolean(existing && previewEntryObjects(existing).length);
+        if (!hasMask) {
+            const created = ensureMaskLayer();
+            if (created) selectGenerationPreview(created.previewId);
+            else { setExpertStatus('蒙版创建失败', '#f48771'); return; }
+        } else {
+            const sel = selectedPreviewEntry();
+            const isMaskSelected = Boolean(sel?.isSelectionMask || sel?.isPatch);
+            if (!isMaskSelected) selectGenerationPreview(existing.previewId);
+        }
+        if (maskToolActive) { maskToolActive = false; stopMaskBrush(); stopPatchBrush(); maskPlinePoints = []; maskRectDraft = null; updatePreviewToolbar(); setExpertStatus('已收起蒙版工具', '#dcdcaa'); return; }
+        maskToolActive = true;
+        maskToolKind = maskToolKind || 'add';
+        updatePreviewToolbar();
+        if (maskToolKind === 'add' || maskToolKind === 'subtract') startMaskBrush(maskToolKind);
+        else setMaskToolKind(maskToolKind);
+    }
+    function setMaskToolKind(kind) {
+        if (!['add','subtract','pline','rect'].includes(kind)) return;
+        maskToolKind = kind;
+        maskToolActive = true;
+        updatePreviewToolbar();
+        if (kind === 'add' || kind === 'subtract') { startMaskBrush(kind); return; }
+        let entry = maskPreviewEntry() || selectedPatchEntry();
+        if (!entry) {
+            entry = ensureMaskLayer();
+            if (entry) selectGenerationPreview(entry.previewId);
+        }
+        entry = maskPreviewEntry() || selectedPatchEntry();
+        if (!entry) { setExpertStatus('蒙版不可用', '#f48771'); return; }
+        stopAnnotationMode();
+        stopPatchBrush();
+        stopExpertSelectionDrawing();
+        ensureMaskGuidesForOverlay();
+        if (!maskOverlayActive) showMaskOverlay(exportMaskOverlayData() || persistedMaskOverlayData() || entry.sourceImageData || null);
+        maskBrushMode = null;
+        bindMaskOverlayEvents();
+        canvas.discardActiveObject();
+        canvas.selection = false;
+        canvas.isDrawingMode = false;
+        canvas.defaultCursor = 'crosshair';
+        const overlay = document.getElementById('mask-edit-overlay');
+        const shapeMode = kind === 'pline' || kind === 'rect';
+        overlay?.classList.toggle('is-shape-active', shapeMode);
+        overlay?.classList.toggle('is-brush-active', !shapeMode);
+        if (kind !== 'pline') {
+            maskPlinePoints = [];
+            maskPlineSnapshot = null;
+        }
+        maskRectDraft = null;
+        maskRectSnapshot = null;
+        updatePreviewToolbar();
+        setExpertStatus(kind === 'pline' ? 'PLINE区域：左击加点，右击闭合填充' : '矩形范围：拖拽绘制矩形区域', '#4ec9b0');
+    }
+    function captureMaskSnapshot() {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx) return null;
+        try { return ctx.getImageData(0,0,maskOverlayCanvas.width,maskOverlayCanvas.height); } catch(e){ return null; }
+    }
+    function restoreMaskSnapshot(snap) {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx || !snap) return;
+        ctx.putImageData(snap,0,0);
+    }
+    function drawMaskPlinePreview(cursor) {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx || !maskPlinePoints.length) return;
+        if (maskPlineSnapshot) restoreMaskSnapshot(maskPlineSnapshot);
+        const pts = maskPlinePoints.slice();
+        if (cursor) pts.push(cursor);
+        if (pts.length < 2) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = '#4aa3df';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6,4]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fillStyle='#4aa3df'; ctx.fill(); });
+        if (cursor){ ctx.beginPath(); ctx.arc(cursor.x,cursor.y,3,0,Math.PI*2); ctx.strokeStyle='#4aa3df'; ctx.stroke(); }
+        ctx.restore();
+        maskOverlayRenderVersion++;
+    }
+    function drawMaskRectPreview(to) {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx || !maskRectDraft || !to) return;
+        if (maskRectSnapshot) restoreMaskSnapshot(maskRectSnapshot);
+        const x = Math.min(maskRectDraft.x, to.x), y = Math.min(maskRectDraft.y, to.y), w = Math.abs(to.x-maskRectDraft.x), h = Math.abs(to.y-maskRectDraft.y);
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(14,99,156,0.30)';
+        ctx.strokeStyle = '#4aa3df';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6,4]);
+        if (w>0&&h>0) ctx.fillRect(x,y,w,h);
+        if (w>0&&h>0) ctx.strokeRect(x,y,w,h);
+        ctx.restore();
+        maskOverlayRenderVersion++;
+    }
+    function fillMaskPline() {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx || maskPlinePoints.length < 3) { maskPlinePoints=[]; maskPlineSnapshot=null; setExpertStatus('PLINE需至少3个点', '#f48771'); return; }
+        ensureMaskGuidesForOverlay();
+        if (maskPlineSnapshot) restoreMaskSnapshot(maskPlineSnapshot);
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.moveTo(maskPlinePoints[0].x, maskPlinePoints[0].y);
+        for (let i=1;i<maskPlinePoints.length;i++) ctx.lineTo(maskPlinePoints[i].x, maskPlinePoints[i].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        maskOverlayRenderVersion++;
+        tintMaskOverlay();
+        maskPlinePoints = [];
+        maskPlineSnapshot=null;
+        persistMaskOverlayData();
+        refreshExpertSelectionPreview();
+        queueHistoryForPage(currentPageGlobal);
+        canvas.requestRenderAll();
+        setExpertStatus('PLINE区域已在原蒙版上增加', '#4ec9b0');
+    }
+    function fillMaskRect(from, to) {
+        const ctx = maskOverlayContext || ensureMaskOverlayCanvas();
+        if (!ctx || !from || !to) return;
+        const x = Math.min(from.x, to.x), y = Math.min(from.y, to.y), w = Math.abs(to.x-from.x), h = Math.abs(to.y-from.y);
+        if (w < 2 || h < 2) { maskRectSnapshot=null; return; }
+        ensureMaskGuidesForOverlay();
+        if (maskRectSnapshot) restoreMaskSnapshot(maskRectSnapshot);
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 1;
+        ctx.fillRect(x, y, w, h);
+        ctx.restore();
+        maskOverlayRenderVersion++;
+        tintMaskOverlay();
+        maskRectSnapshot=null;
+        persistMaskOverlayData();
+        refreshExpertSelectionPreview();
+        queueHistoryForPage(currentPageGlobal);
+        canvas.requestRenderAll();
+        setExpertStatus('矩形区域已在原蒙版上增加', '#4ec9b0');
     }
 
     function startMaskPatchSourceSelection() {
@@ -2238,19 +2479,24 @@ const thumbnail = document.createElement('img');
         canvas.selection = false;
         canvas.isDrawingMode = false;
         canvas.defaultCursor = 'crosshair';
-        document.getElementById('mask-edit-overlay')?.classList.add('is-brush-active');
+        const overlay = document.getElementById('mask-edit-overlay');
+        overlay?.classList.remove('is-shape-active');
+        overlay?.classList.add('is-brush-active');
         updatePreviewToolbar();
         setExpertStatus(patchEditBrushMode === 'subtract' ? '橡皮擦已开启：涂抹以消除补丁局部内容' : '涂抹已开启：涂抹以增加取图补丁局部内容', '#4ec9b0');
     }
 
     function stopPatchBrush() {
         if (!canvas) return;
+        const wasPatchEditing = Boolean(patchEditBrushMode || patchEditOverlayActive || patchEditEntry);
         patchEditBrushMode = null;
         patchEditStrokeActive = false;
         patchEditLastPoint = null;
         patchEditEntry = null;
-        document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active');
-        document.getElementById('mask-edit-overlay')?.classList.remove('is-visible');
+        if (wasPatchEditing) {
+            document.getElementById('mask-edit-overlay')?.classList.remove('is-brush-active', 'is-shape-active', 'is-visible');
+            maskOverlayActive = false;
+        }
         patchEditOverlayActive = false;
         if (annotationMode !== 'brush' && annotationMode !== 'text' && annotationMode !== 'marker' && !maskBrushMode) {
             canvas.isDrawingMode = false;
@@ -2509,7 +2755,7 @@ const thumbnail = document.createElement('img');
         const full = expertEditScope() === 'full';
         document.getElementById('expert-scope-status').innerText = full
             ? `整张修改：蒙版画布固定为主图尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}；未绘制时全图可修改，生成输出按“生成尺寸”设置`
-            : '局部修改：请框选或涂抹需要修改的区域';
+            : '局部修改：请在画布预览栏选择蒙版工具绘制需要修改的区域';
         updateExpertSelectionControls();
         updateExpertGenerationCountHint();
     }
@@ -3150,6 +3396,27 @@ const thumbnail = document.createElement('img');
                 return;
             }
 
+            if (maskToolActive && (maskToolKind === 'pline' || maskToolKind === 'rect')) {
+                const pointer = canvas.getPointer(opt.e);
+                if (!pointIsOnSlide(pointer)) return;
+                if (maskToolKind === 'pline') {
+                    if (evt.button === 2) { fillMaskPline(); return; }
+                    if (evt.button !== 0) return;
+                    canvas.discardActiveObject();
+                    if (!maskPlineSnapshot) maskPlineSnapshot = captureMaskSnapshot();
+                    maskPlinePoints.push({x:pointer.x, y:pointer.y});
+                    drawMaskPlinePreview(null);
+                    setExpertStatus('PLINE区域：已 ' + maskPlinePoints.length + ' 点，右击闭合', '#4ec9b0');
+                    return;
+                }
+                if (evt.button !== 0) return;
+                canvas.discardActiveObject();
+                maskRectDraft = {x:pointer.x, y:pointer.y};
+                maskRectSnapshot = captureMaskSnapshot();
+                maskOverlayStrokeActive = true;
+                maskOverlayPointerId = evt.pointerId;
+                return;
+            }
             if (annotationMode === 'brush' && annotationBrushKind === 'pline') {
                 if (evt.button === 2) { finishAnnotationPline(false); return; }
                 if (evt.button !== 0) return;
@@ -3312,7 +3579,16 @@ const thumbnail = document.createElement('img');
                 return;
             }
 
+            if (maskToolActive && maskToolKind === 'pline' && maskPlinePoints.length) {
+                drawMaskPlinePreview(canvas.getPointer(opt.e));
+                return;
+            }
+            if (maskToolActive && maskToolKind === 'rect' && maskOverlayStrokeActive) {
+                drawMaskRectPreview(canvas.getPointer(opt.e));
+                return;
+            }
             // 2. 画笔形状模式 (PLINE线预览 / 矩形拖拽)
+
             if (annotationMode === 'brush' && annotationBrushKind === 'pline') {
                 updateAnnotationPlinePreview(canvas.getPointer(opt.e));
                 return;
@@ -3377,6 +3653,14 @@ const thumbnail = document.createElement('img');
                 return;
             }
 
+            if (maskToolActive && maskToolKind === 'rect' && maskRectDraft && maskOverlayStrokeActive) {
+                const end = canvas.getPointer(opt.e);
+                fillMaskRect(maskRectDraft, end);
+                maskRectDraft = null;
+                maskRectSnapshot = null;
+                maskOverlayStrokeActive = false;
+                return;
+            }
             // 结束矩形标注拖拽
             if (rectDraft) {
                 finishAnnotationRectDraft();
@@ -4232,25 +4516,26 @@ const thumbnail = document.createElement('img');
 
     function updateExpertBrushSize(value) {
         const size = Math.max(4, Math.min(160, Number(value) || 32));
-        document.getElementById('expert-brush-size-value').innerText = Math.round(size);
+        const sizeLabel = document.getElementById('expert-brush-size-value');
+        if (sizeLabel) sizeLabel.innerText = Math.round(size);
         if (canvas?.freeDrawingBrush) canvas.freeDrawingBrush.width = size;
     }
 
     function updateExpertSelectionControls() {
-        const brush = expertSelectionMode() === 'brush';
-        const hasSelection = expertSelectionGuides().length > 0;
-        document.getElementById('expert-brush-size-row').style.display = brush ? 'block' : 'none';
-        document.getElementById('expert-select-region').innerText = expertSelectionActive || hasSelection ? '清空蒙版' : '绘制蒙版';
+        const hasLegacyGuides = expertSelectionGuides().length > 0;
+        const hasUnifiedMask = Boolean(maskPreviewEntry() || maskOverlayData || persistedMaskOverlayData());
         const status = document.getElementById('expert-scope-status');
+        if (!status) return;
         if (expertEditScope() === 'full') {
-            if (hasSelection) status.innerText = `整张修改蒙版：${expertSelectionSummary()}；蒙版总尺寸与主图一致，仅透明选区允许模型修改`;
-            else if (expertSelectionActive) status.innerText = brush ? '整张修改：按住鼠标涂抹可编辑区域' : '整张修改：拖动框选可编辑区域';
-            else status.innerText = `整张修改：未绘制蒙版时全图可修改；输出尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}`;
-        } else if (hasSelection) status.innerText = `组合蒙版：${expertSelectionSummary()}；可切换工具继续添加`;
-        else if (expertSelectionActive) status.innerText = brush ? '按住鼠标涂抹，可绘制多笔或切换为框选' : '拖动框选，可连续绘制或切换为涂抹';
-        else status.innerText = '局部修改：请先绘制蒙版';
+            status.innerText = hasLegacyGuides || hasUnifiedMask
+                ? '整图修改：已启用统一蒙版，可继续用预览栏工具调整可编辑区域'
+                : `整图修改：未绘制蒙版时全图可修改；输出尺寸 ${canvas?.originalWidth || 0}×${canvas?.originalHeight || 0}`;
+        } else {
+            status.innerText = hasLegacyGuides || hasUnifiedMask
+                ? '局部修改：已启用统一蒙版，提交时仅修改蒙版区域'
+                : '局部修改：请在画布预览栏选择蒙版工具绘制区域';
+        }
     }
-
     function activateExpertSelectionTool() {
         if (!canvas || !expertSelectionActive) return;
         canvas.discardActiveObject(); canvas.selection = false;
@@ -4277,6 +4562,7 @@ const thumbnail = document.createElement('img');
         stopExpertSelectionDrawing();
         stopMaskBrush();
         maskOverlayData = null;
+        maskToolActive = false; maskPlinePoints = []; maskRectDraft = null;
         if (drawingObject?.data?.type === 'expert-guide') { canvas.remove(drawingObject); drawingObject = null; }
         if (expertGuide?.canvas) canvas.remove(expertGuide);
         expertGuide = null;
@@ -4297,10 +4583,16 @@ const thumbnail = document.createElement('img');
         const additiveGuides = guides.filter(guide => guide.data?.maskOperation !== 'subtract');
         if (!additiveGuides.length) return null;
         const boundsList = additiveGuides.map(guide => guide.getBoundingRect(true, true));
-        const x1 = Math.max(0, Math.min(...boundsList.map(item => item.left)));
-        const y1 = Math.max(0, Math.min(...boundsList.map(item => item.top)));
-        const x2 = Math.min(canvas.originalWidth, Math.max(...boundsList.map(item => item.left + item.width)));
-        const y2 = Math.min(canvas.originalHeight, Math.max(...boundsList.map(item => item.top + item.height)));
+        let x1 = Math.max(0, Math.min(...boundsList.map(item => item.left)));
+        let y1 = Math.max(0, Math.min(...boundsList.map(item => item.top)));
+        let x2 = Math.min(canvas.originalWidth, Math.max(...boundsList.map(item => item.left + item.width)));
+        let y2 = Math.min(canvas.originalHeight, Math.max(...boundsList.map(item => item.top + item.height)));
+        const pixelBounds = maskOverlayPixelBounds();
+        if (pixelBounds) {
+            x1 = pixelBounds.x; y1 = pixelBounds.y;
+            x2 = Math.min(canvas.originalWidth, pixelBounds.x + pixelBounds.w);
+            y2 = Math.min(canvas.originalHeight, pixelBounds.y + pixelBounds.h);
+        }
         if (x2 - x1 < 2 || y2 - y1 < 2) return null;
 
         if (maskOverlayActive && maskOverlayCanvas) {
@@ -4502,7 +4794,7 @@ const thumbnail = document.createElement('img');
         stopExpertSelectionDrawing();
         const isFullImage = expertEditScope() === 'full';
         const selectionPayload = refreshExpertSelectionPreview();
-        if (!isFullImage && !selectionPayload) { setExpertStatus('局部修改请先绘制蒙版', '#f48771'); return; }
+        if (!isFullImage && !selectionPayload) { setExpertStatus('局部修改请先在画布预览栏绘制蒙版', '#f48771'); return; }
         const outputOptions = isFullImage ? (generationMode === 'webridge' ? getWebridgeOutputOptions() : getExpertGenerationOptions(model)) : {width:null, height:null, imageSize:null, aspectRatio:null};
         let selectionMask = selectionPayload?.maskData || null;
         const sourceImage = exportCurrentCompositeImage();
@@ -4988,15 +5280,16 @@ const thumbnail = document.createElement('img');
     window.toggleExpertModelForm = toggleExpertModelForm;
     window.saveExpertModel = saveExpertModel;
     window.removeExpertModel = removeExpertModel;
-    window.startExpertSelection = startExpertSelection;
-    window.updateExpertSelectionMode = updateExpertSelectionMode;
-    window.updateExpertBrushSize = updateExpertBrushSize;
     window.handleReferenceImage = handleReferenceImage;
     window.updateExpertEditScope = updateExpertEditScope;
     window.setAnnotationColor = setAnnotationColor;
     window.deleteSelectedPreviewLayer = deleteSelectedPreviewLayer;
     window.setSelectedLayerAsMain = setSelectedLayerAsMain;
     window.startAnnotationBrush = startAnnotationBrush;
+    window.toggleMaskTool = toggleMaskTool;
+    window.setMaskToolKind = setMaskToolKind;
+    window.updatePreviewBrushSize = updatePreviewBrushSize;
+    window.setAnnotationBrushKind = setAnnotationBrushKind;
     window.addAnnotationText = addAnnotationText;
     window.toggleAnnotationMarker = toggleAnnotationMarker;
     window.submitExpertEdit = submitExpertEdit;

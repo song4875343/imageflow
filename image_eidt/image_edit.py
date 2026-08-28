@@ -1213,9 +1213,9 @@ def _webridge_edit_patch(
     count = max(1, int(count or 1))
     if editable_box is not None:
         x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
-        target = image.crop((x1, y1, x2, y2))
+        # image is already the cropped local context; upload it to WebBridge.
         generated_list = _webridge_generate(
-            target,
+            image,
             prompt,
             site,
             cancel_check,
@@ -1224,14 +1224,17 @@ def _webridge_edit_patch(
         )
         # 生成的局部图可能带透明背景：先合成回原裁剪区（透明处保留原图），
         # 再 feather 拼贴，避免透明区被 RGB 转换填成黑色
-        base_rgba = target.convert("RGBA")
+        base_rgba = image.convert("RGBA")
         composited = [
             Image.alpha_composite(base_rgba, generated.convert("RGBA")).convert("RGB")
             for generated in generated_list
         ]
         return [
             feather_patch(
-                image, composed, (x1, y1, x2, y2), selection_mask=editable_mask
+                image,
+                composed.crop((x1, y1, x2, y2)),
+                (x1, y1, x2, y2),
+                selection_mask=editable_mask
             )
             for composed in composited
         ]
@@ -1278,7 +1281,7 @@ def edit_patch(
             x1, y1, x2, y2 = _clamp_box(editable_box, image.width, image.height)
             target = image.crop((x1, y1, x2, y2))
             generated_list = _modelscope_image_edit(
-                target,
+                image,
                 prompt,
                 config,
                 cancel_check,
