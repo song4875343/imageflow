@@ -5,7 +5,6 @@ except ImportError:
 import base64
 import importlib.util
 import json
-import math
 import os
 import re
 import shutil
@@ -1095,43 +1094,8 @@ def _webridge_prompt(prompt, size):
     width, height = (int(size[0]), int(size[1]))
     return (
         f"{str(prompt).strip()}\n"
-        f"要求：生成尺寸 {width}×{height}（主图尺寸），宽高比 {_simplest_aspect_ratio(width, height)}，质量：高。"
+        f"要求：生成尺寸 {width}×{height}（主图尺寸），质量：高。"
     )
-
-
-def _simplest_aspect_ratio(width, height):
-    """Reduce width:height to a simple ratio, snapped to common ratios when close.
-
-    Examples: 1920×1080 -> 16:9, 1408×768 -> 16:9, 1024×1024 -> 1:1.
-    """
-    width, height = int(width), int(height)
-    if width <= 0 or height <= 0:
-        return "1:1"
-    ratio = width / height
-    common = [
-        (16, 9),
-        (9, 16),
-        (4, 3),
-        (3, 4),
-        (3, 2),
-        (2, 3),
-        (1, 1),
-        (21, 9),
-        (9, 21),
-        (5, 4),
-        (4, 5),
-    ]
-    best = None
-    best_error = 0.04
-    for rw, rh in common:
-        error = abs((rw / rh) / ratio - 1.0)
-        if error < best_error:
-            best_error = error
-            best = (rw, rh)
-    if best is not None:
-        return f"{best[0]}:{best[1]}"
-    divisor = math.gcd(width, height)
-    return f"{width // divisor}:{height // divisor}"
 
 
 def _webridge_generate(

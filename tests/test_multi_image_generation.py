@@ -79,6 +79,14 @@ class WrongRatioGeminiCompletions:
 
 
 class MultiImageGenerationTests(unittest.TestCase):
+    def test_webridge_prompt_only_specifies_exact_pixel_dimensions(self):
+        prompt = image_edit._webridge_prompt("patch details", (1408, 768))
+
+        self.assertIn("1408×768", prompt)
+        self.assertNotIn("宽高比", prompt)
+        self.assertNotIn("16:9", prompt)
+
+
     def test_gemini_native_size_mapping(self):
         self.assertEqual((1200, 896), image_edit.gemini_output_size("1K", "4:3"))
         self.assertEqual((1376, 768), image_edit.gemini_output_size("1K", "16:9"))
