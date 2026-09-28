@@ -12,6 +12,9 @@ from pathlib import Path
 import webview
 from PIL import Image, ImageChops
 
+import cv2
+import numpy as np
+
 
 def _notify_windows(title, message):
     def _run():
@@ -417,6 +420,61 @@ class ImageEditorAPI:
             )
         except Exception as exc:
             logger.exception("mask patch failed id=%s", request_id)
+            return json.dumps(
+                {"error": str(exc), "requestId": request_id}, ensure_ascii=False
+            )
+
+    def perspective_correct_image_data(self, image_data, quad, out_width, out_height):
+        """Warp a quadrilateral region of a layer into an axis-aligned rectangle."""
+        request_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "perspective start id=%s quad=%s out=%sx%s",
+            request_id,
+            quad,
+            out_width,
+            out_height,
+        )
+        try:
+            encoded = str(image_data).split(",", 1)[-1]
+            image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGBA")
+            points = json.loads(quad) if isinstance(quad, str) else quad
+            if not isinstance(points, (list, tuple)) or len(points) != 4:
+                raise ValueError("透视裁剪需要 4 个角点")
+            src = np.array(
+                [[float(point["x"]), float(point["y"])] for point in points],
+                dtype=np.float32,
+            )
+            out_w = max(1, int(out_width))
+            out_h = max(1, int(out_height))
+            dst = np.array(
+                [
+                    [0, 0],
+                    [out_w - 1, 0],
+                    [out_w - 1, out_h - 1],
+                    [0, out_h - 1],
+                ],
+                dtype=np.float32,
+            )
+            matrix = cv2.getPerspectiveTransform(src, dst)
+            warped = cv2.warpPerspective(
+                np.array(image),
+                matrix,
+                (out_w, out_h),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0, 0),
+            )
+            result = Image.fromarray(warped, "RGBA")
+            return json.dumps(
+                {
+                    "imageData": _data_url(result),
+                    "width": out_w,
+                    "height": out_h,
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            logger.exception("perspective failed id=%s", request_id)
             return json.dumps(
                 {"error": str(exc), "requestId": request_id}, ensure_ascii=False
             )
