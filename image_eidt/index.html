@@ -1089,6 +1089,9 @@
     }
 
     function clearGenerationPreviewCards() {
+        // 预览卡片（以及历史恢复/翻页重建）全部重建时，调整状态一并复位，避免残留标记。
+        imageTransformActive = false;
+        imageTransformEntry = null;
         generationPreviewObjects.forEach(entry => {
             entry.thumbnail?.removeAttribute('src');
             entry.sourceImageData = '';
@@ -1940,6 +1943,7 @@
             object.data.previewVisible = shouldShow;
             object.set('visible', shouldShow);
         });
+        if (!shouldShow && imageTransformEntry === entry) stopImageTransform();
         syncGenerationPreviewVisibility();
         canvas.requestRenderAll();
         queueHistoryForPage(currentPageGlobal);
@@ -1973,6 +1977,7 @@
             return;
         }
         if (selectedPreviewId === previewId && selectedPreviewIds.size <= 1 && !document.getElementById('preview-selection-toolbar')?.hidden) {
+            if (imageTransformActive) stopImageTransform();
             selectedPreviewId = null;
             selectedPreviewIds.clear();
             hideMaskOverlay();
@@ -2061,6 +2066,12 @@
             else canvas.setActiveObject(new fabric.ActiveSelection(activeObjects, {canvas}));
         }
         if (options.render !== false) canvas?.requestRenderAll();
+        // 只要锁定的目标不再是当前的调整图层，就同步清理调整状态，避免标记与实际不一致。
+        if (imageTransformActive && imageTransformEntry && nextId !== imageTransformEntry.previewId) {
+            imageTransformActive = false;
+            imageTransformEntry = null;
+            updatePreviewToolbar();
+        }
         return activeEntry;
     }
 
@@ -2068,6 +2079,7 @@
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
         if (!entry || entry.isMain || !objects.length) return;
+        if (imageTransformActive) stopImageTransform();
         if (maskPatchSelection) clearMaskPatchSourceSelection();
         if (maskCropSelection) clearMaskCropSourceSelection();
         if (fineTunePreviewId === previewId) {
@@ -3483,12 +3495,30 @@ const thumbnail = document.createElement('img');
         });
     }
 
+    // 调整框是否真的处于“已显示且可交互”状态（用于避免状态标记与实际不一致）。
+    function imageTransformShown() {
+        if (!imageTransformActive || !imageTransformEntry || !canvas) return false;
+        const object = previewEntryObjects(imageTransformEntry)[0];
+        if (!object || object.visible === false) return false;
+        if (!object.hasControls || object.selectable === false || object.evented === false) return false;
+        return canvas.getActiveObject?.() === object;
+    }
+
     function startImageTransform(entry) {
         const object = previewEntryObjects(entry)[0];
         if (!object) return;
+        if (object.visible === false) { setExpertStatus('图层已隐藏，请先显示该图层再调整', '#f48771'); return; }
         imageTransformActive = true;
         imageTransformEntry = entry;
         setFineTunePreview(entry.previewId, {activate: true});
+        if (fineTunePreviewId !== entry.previewId) {
+            // 解锁失败（例如对象不在画布上），回滚标记，避免状态不一致。
+            imageTransformActive = false;
+            imageTransformEntry = null;
+            setExpertStatus('该图层暂时无法调整，请重新选择后再试', '#f48771');
+            updatePreviewToolbar();
+            return;
+        }
         applyTransformVisuals(object);
         ensureMirrorControls(object);
         canvas.discardActiveObject();
@@ -3520,10 +3550,15 @@ const thumbnail = document.createElement('img');
         const entry = selectedPreviewEntry();
         if (!isImageLayerEntry(entry)) { setExpertStatus('请选择一张图片图层后再调整', '#f48771'); return; }
         if (entry.isMain) { setExpertStatus('主图不支持调整，请先选择其他图片图层', '#f48771'); return; }
-        if (imageTransformActive && imageTransformEntry === entry) {
+        if (imageTransformActive && imageTransformEntry === entry && imageTransformShown()) {
             stopImageTransform();
             setExpertStatus('已退出调整', '#dcdcaa');
             return;
+        }
+        // 若标记为激活但实际已不可见/不可交互，先清理过期状态，避免“再点不显示”。
+        if (imageTransformActive && !imageTransformShown()) {
+            imageTransformActive = false;
+            imageTransformEntry = null;
         }
         if (imageEditActive) stopImageEditTool();
         if (perspectiveCropActive) finishPerspectiveCropUi();
