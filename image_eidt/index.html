@@ -73,6 +73,8 @@
         #mask-edit-overlay.is-shape-active { pointer-events:none; cursor:crosshair; }
         #mask-edit-overlay.is-image-edit { opacity:1; }
         #mask-edit-overlay.is-perspective { opacity:1; }
+        #layer-outline-overlay { position:absolute; display:none; pointer-events:none; z-index:3; }
+        #layer-outline-overlay.is-visible { display:block; }
         #generation-preview { position:absolute; left:332px; right:20px; bottom:20px; height:12.5vh; min-height:86px; max-height:150px; box-sizing:border-box; display:flex; align-items:stretch; gap:10px; padding:10px 12px; border:1px solid #3a3d41; border-radius:12px; background:linear-gradient(180deg,rgba(32,34,37,.94),rgba(23,25,27,.94)); box-shadow:0 10px 30px rgba(0,0,0,.35); backdrop-filter:blur(14px); z-index:20; }
         .preview-heading { width:68px; flex:0 0 68px; display:flex; flex-direction:column; justify-content:center; color:#d8dde3; font-size:12px; letter-spacing:.08em; }
         .preview-heading small { margin-top:5px; color:#737b84; letter-spacing:0; }
@@ -577,6 +579,7 @@
     <div id="canvas-stage">
         <canvas id="c"></canvas>
         <canvas id="mask-edit-overlay" aria-hidden="true"></canvas>
+        <canvas id="layer-outline-overlay" aria-hidden="true"></canvas>
         <div id="page-nav">
             <button onclick="changePage(-1)" title="上一页">◀</button>
             <span id="page-info">1 / 1</span>
@@ -605,6 +608,7 @@
             <button id="annotation-text-button" class="layer-action icon-btn annotation-action" title="文字" aria-label="文字" onclick="addAnnotationText()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4.5h14V6"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
             <button id="annotation-marker-button" class="layer-action icon-btn annotation-action" title="标记" aria-label="标记" onclick="toggleAnnotationMarker()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
             <button class="layer-action icon-btn" title="保存" aria-label="保存" onclick="openSaveChoiceDialog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
+            <button id="merge-layers-button" class="layer-action" style="min-width:auto;padding:0 9px;" title="合并选中的图片图层（Shift+点击多选，至少2个）" aria-label="合并图层" hidden onclick="mergeSelectedPreviewLayers()">合并</button>
         </div>
         <div id="preview-brush-size-row" class="preview-brush-size-row" hidden>
             <div id="preview-brush-mode-group" class="preview-brush-mode-group" hidden>
@@ -734,6 +738,11 @@
     let selectedPreviewId = null;
     let fineTunePreviewId = null;
     let suppressPreviewCardSync = false;
+    let selectedPreviewIds = new Set();
+    let layerOutlineOverlay = null;
+    let layerOutlineContext = null;
+    let layerOutlineRenderVersion = 0;
+    let layerOutlineSuppressed = false;
     let annotationColor = '#ff5252';
     let annotationMode = null;
     let maskBrushMode = null;
@@ -998,24 +1007,30 @@
             entry.thumbnail.removeAttribute('src');
             return;
         }
-        // Keep the card immediately usable. The reduced preview is an async
-        // enhancement and must never leave the card blank while decoding.
+        // Keep the card immediately usable. The cropped/shrunken preview is an
+        // async enhancement and must never leave the card blank while decoding.
         entry.thumbnail.src = source;
-        if (source.length <= 120000) {
-            return;
-        }
         const previewImage = new Image();
         previewImage.onload = () => {
             if (entry.sourceImageData !== source || !entry.thumbnail.isConnected) return;
-            const longestEdge = Math.max(previewImage.naturalWidth || 1, previewImage.naturalHeight || 1);
+            const naturalWidth = previewImage.naturalWidth || previewImage.width || 1;
+            const naturalHeight = previewImage.naturalHeight || previewImage.height || 1;
+            // Crop away fully transparent margins so the visible content fills the card.
+            const bounds = computeOpaqueBoundsFromImage(previewImage, 256);
+            const sourceX = bounds ? bounds.x : 0;
+            const sourceY = bounds ? bounds.y : 0;
+            const sourceW = bounds ? bounds.w : naturalWidth;
+            const sourceH = bounds ? bounds.h : naturalHeight;
+            const longestEdge = Math.max(naturalWidth, naturalHeight);
             const scale = Math.min(1, 256 / longestEdge);
             const previewCanvas = document.createElement('canvas');
-            previewCanvas.width = Math.max(1, Math.round((previewImage.naturalWidth || 1) * scale));
-            previewCanvas.height = Math.max(1, Math.round((previewImage.naturalHeight || 1) * scale));
+            previewCanvas.width = Math.max(1, Math.round(sourceW * scale));
+            previewCanvas.height = Math.max(1, Math.round(sourceH * scale));
             const context = previewCanvas.getContext('2d', {alpha:true});
             if (!context) { entry.thumbnail.src = source; return; }
-            context.drawImage(previewImage, 0, 0, previewCanvas.width, previewCanvas.height);
-            entry.thumbnail.src = previewCanvas.toDataURL('image/webp', 0.78);
+            context.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            context.drawImage(previewImage, sourceX, sourceY, sourceW, sourceH, 0, 0, previewCanvas.width, previewCanvas.height);
+            entry.thumbnail.src = previewCanvas.toDataURL('image/webp', 0.8);
             previewCanvas.width = 1;
             previewCanvas.height = 1;
         };
@@ -1023,6 +1038,50 @@
             if (entry.sourceImageData === source && entry.thumbnail.isConnected) entry.thumbnail.src = source;
         };
         previewImage.src = source;
+    }
+
+    // Scan an image's alpha channel and return the tight bounding box of its
+    // non-transparent pixels (in the image's own pixel space). The scan happens
+    // on a downscaled copy for speed, then is mapped back to full resolution.
+    function computeOpaqueBoundsFromImage(image, maxEdge = 1024) {
+        if (!image) return null;
+        const naturalWidth = image.naturalWidth || image.width || 0;
+        const naturalHeight = image.naturalHeight || image.height || 0;
+        if (!naturalWidth || !naturalHeight) return null;
+        const scale = Math.min(1, maxEdge / Math.max(naturalWidth, naturalHeight));
+        const width = Math.max(1, Math.round(naturalWidth * scale));
+        const height = Math.max(1, Math.round(naturalHeight * scale));
+        const sample = document.createElement('canvas');
+        sample.width = width;
+        sample.height = height;
+        const context = sample.getContext('2d', {alpha:true});
+        if (!context) return null;
+        context.clearRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        let data;
+        try { data = context.getImageData(0, 0, width, height).data; } catch (error) { return null; }
+        let minX = width, minY = height, maxX = -1, maxY = -1;
+        for (let y = 0; y < height; y++) {
+            const row = y * width;
+            for (let x = 0; x < width; x++) {
+                if (data[(row + x) * 4 + 3] <= 8) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+        sample.width = 1;
+        sample.height = 1;
+        if (maxX < 0) return null;
+        const inverse = 1 / scale;
+        const margin = inverse;
+        return {
+            x: Math.max(0, Math.floor(minX * inverse - margin)),
+            y: Math.max(0, Math.floor(minY * inverse - margin)),
+            w: Math.min(naturalWidth, Math.ceil((maxX - minX + 1) * inverse + margin * 2)),
+            h: Math.min(naturalHeight, Math.ceil((maxY - minY + 1) * inverse + margin * 2)),
+        };
     }
 
     function clearGenerationPreviewCards() {
@@ -1043,6 +1102,9 @@
         clearGenerationPreviewCards();
         expandedBlendGroups.clear();
         selectedPreviewId = null;
+        selectedPreviewIds.clear();
+        clearLayerOutline();
+        updateMergeButton();
         annotationMode = null;
         maskBrushMode = null;
         maskToolActive = false; maskPlinePoints = []; maskRectDraft = null;
@@ -1133,6 +1195,7 @@
         if (maskRow) maskRow.hidden = !maskToolActive;
         document.querySelectorAll('[data-mask-kind]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.maskKind === maskToolKind));
         document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
+        syncLayerOutlineSuppression();
     }
 
     function maskOverlayObjects() {
@@ -1402,8 +1465,10 @@
             );
         });
         selectedPreviewId = generationPreviewObjects.has(previousSelectedId) ? previousSelectedId : null;
+        selectedPreviewIds = selectedPreviewId ? new Set([selectedPreviewId]) : new Set();
         setFineTunePreview(generationPreviewObjects.has(fineTunePreviewId) ? fineTunePreviewId : null, {render:false});
         document.getElementById('preview-selection-toolbar').hidden = !selectedPreviewId;
+        updateMergeButton();
         syncGenerationPreviewVisibility();
         updatePreviewToolbar();
     }
@@ -1443,7 +1508,392 @@
                 entry.fineTuneButton.setAttribute('aria-label', entry.fineTuneButton.title);
             }
             entry.card.classList.toggle('is-main', Boolean(entry.isMain));
-            entry.card.classList.toggle('is-selected', entry.previewId === selectedPreviewId);
+            entry.card.classList.toggle('is-selected', selectedPreviewIds.has(entry.previewId));
+        });
+    }
+
+    function updateMergeButton() {
+        const button = document.getElementById('merge-layers-button');
+        if (!button) return;
+        const valid = [...selectedPreviewIds]
+            .map(id => generationPreviewObjects.get(id))
+            .filter(entry => entry && isImageLayerEntry(entry) && !entry.isMain);
+        button.hidden = valid.length < 2;
+    }
+
+    // ---------- 图层非透明区蓝色边界 ----------
+
+    function ensureLayerOutlineOverlay() {
+        const overlay = document.getElementById('layer-outline-overlay');
+        if (!overlay || !canvas?.originalWidth || !canvas?.originalHeight) return null;
+        if (overlay.width !== canvas.originalWidth || overlay.height !== canvas.originalHeight) {
+            overlay.width = canvas.originalWidth;
+            overlay.height = canvas.originalHeight;
+        }
+        layerOutlineOverlay = overlay;
+        layerOutlineContext = overlay.getContext('2d');
+        updateLayerOutlineTransform();
+        return layerOutlineContext;
+    }
+
+    function updateLayerOutlineTransform() {
+        const overlay = document.getElementById('layer-outline-overlay');
+        if (!overlay || !canvas?.originalWidth || !canvas?.originalHeight) return;
+        const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+        overlay.style.left = `${vpt[4]}px`;
+        overlay.style.top = `${vpt[5]}px`;
+        overlay.style.width = `${canvas.originalWidth * vpt[0]}px`;
+        overlay.style.height = `${canvas.originalHeight * vpt[3]}px`;
+    }
+
+    function clearLayerOutline() {
+        layerOutlineRenderVersion++;
+        const overlay = document.getElementById('layer-outline-overlay');
+        if (!overlay) return;
+        const context = overlay.getContext('2d');
+        if (context) context.clearRect(0, 0, overlay.width, overlay.height);
+        overlay.classList.remove('is-visible');
+    }
+
+    // 对剪影做圆形膨胀：把剪影在半径 radius 的圆周上重复叠画，得到外扩后的轮廓。
+    function dilateMaskCanvas(mask, width, height, radius) {
+        const dilated = document.createElement('canvas');
+        dilated.width = width; dilated.height = height;
+        const context = dilated.getContext('2d', {alpha:true});
+        if (!context) return null;
+        context.clearRect(0, 0, width, height);
+        if (radius <= 0) {
+            context.drawImage(mask, 0, 0);
+            return dilated;
+        }
+        const steps = Math.max(12, Math.min(36, Math.round(radius * 6)));
+        context.drawImage(mask, 0, 0);
+        for (let i = 0; i < steps; i += 1) {
+            const angle = (i / steps) * Math.PI * 2;
+            context.drawImage(mask, Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
+        return dilated;
+    }
+
+    // Marching-squares 追踪 alpha 剪影轮廓为折线，便于用虚线描绘（而不是填充实心带）。
+    function traceAlphaContours(data, width, height, threshold) {
+        const CASES = [
+            [], [[3, 0]], [[0, 1]], [[3, 1]], [[1, 2]], [[3, 2], [0, 1]], [[0, 2]], [[2, 3]],
+            [[2, 3]], [[0, 2]], [[0, 1], [2, 3]], [[1, 2]], [[1, 3]], [[0, 1]], [[3, 0]], [],
+        ];
+        const alphaAt = (x, y) => data[(y * width + x) * 4 + 3] / 255;
+        const cross = (a, b) => {
+            const delta = b - a;
+            return Math.abs(delta) < 1e-6 ? 0.5 : (threshold - a) / delta;
+        };
+        const segments = [];
+        for (let y = 0; y < height - 1; y += 1) {
+            for (let x = 0; x < width - 1; x += 1) {
+                const tl = alphaAt(x, y), tr = alphaAt(x + 1, y), br = alphaAt(x + 1, y + 1), bl = alphaAt(x, y + 1);
+                const code = (tl > threshold ? 1 : 0) | (tr > threshold ? 2 : 0) | (br > threshold ? 4 : 0) | (bl > threshold ? 8 : 0);
+                const modes = CASES[code];
+                if (!modes.length) continue;
+                const points = [
+                    [x + cross(tl, tr), y],       // 0 上
+                    [x + 1, y + cross(tr, br)],   // 1 右
+                    [x + cross(bl, br), y + 1],   // 2 下
+                    [x, y + cross(tl, bl)],       // 3 左
+                ];
+                modes.forEach(pair => segments.push([points[pair[0]], points[pair[1]]]));
+            }
+        }
+        if (!segments.length) return [];
+        const keyOf = point => `${point[0].toFixed(3)},${point[1].toFixed(3)}`;
+        const lookup = new Map();
+        segments.forEach((segment, index) => {
+            [segment[0], segment[1]].forEach(point => {
+                const key = keyOf(point);
+                if (!lookup.has(key)) lookup.set(key, []);
+                lookup.get(key).push(index);
+            });
+        });
+        const used = new Array(segments.length).fill(false);
+        const polylines = [];
+        for (let i = 0; i < segments.length; i += 1) {
+            if (used[i]) continue;
+            used[i] = true;
+            const line = [segments[i][0], segments[i][1]];
+            for (const forward of [true, false]) {
+                let endKey = keyOf(forward ? line[line.length - 1] : line[0]);
+                let guard = 0;
+                while (guard++ < segments.length) {
+                    const candidate = (lookup.get(endKey) || []).find(index => !used[index]);
+                    if (candidate === undefined) break;
+                    used[candidate] = true;
+                    const segment = segments[candidate];
+                    const next = keyOf(segment[0]) === endKey ? segment[1] : segment[0];
+                    if (forward) line.push(next); else line.unshift(next);
+                    endKey = keyOf(next);
+                }
+            }
+            if (line.length > 2) polylines.push(line);
+        }
+        return polylines;
+    }
+
+    // 生成贴合非透明区、整体向外偏移 offset 像素的轮廓折线（用于画细虚线）。
+    function buildLayerOutlineContours(image, width, height, offset = 20) {
+        if (!image || !width || !height) return [];
+        const scale = Math.min(1, 1200 / Math.max(width, height));
+        const sampleWidth = Math.max(3, Math.round(width * scale));
+        const sampleHeight = Math.max(3, Math.round(height * scale));
+        const mask = document.createElement('canvas');
+        mask.width = sampleWidth; mask.height = sampleHeight;
+        const maskContext = mask.getContext('2d', {alpha:true});
+        if (!maskContext) return [];
+        maskContext.clearRect(0, 0, sampleWidth, sampleHeight);
+        maskContext.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+        const diluted = dilateMaskCanvas(mask, sampleWidth, sampleHeight, Math.max(1, offset * scale));
+        mask.width = 1; mask.height = 1;
+        if (!diluted) return [];
+        let imageData;
+        try { imageData = diluted.getContext('2d').getImageData(0, 0, sampleWidth, sampleHeight); }
+        catch (error) { return []; }
+        const contours = traceAlphaContours(imageData.data, sampleWidth, sampleHeight, 0.5);
+        diluted.width = 1; diluted.height = 1;
+        const inverse = 1 / scale;
+        return contours.map(line => line.map(point => [point[0] * inverse, point[1] * inverse]));
+    }
+
+    let layerOutlineRefreshTimer = null;
+    function scheduleLayerOutlineRefresh() {
+        if (!selectedPreviewIds.size) return;
+        if (layerOutlineRefreshTimer) clearTimeout(layerOutlineRefreshTimer);
+        layerOutlineRefreshTimer = setTimeout(() => {
+            layerOutlineRefreshTimer = null;
+            outlineSelectedImageLayers();
+        }, 160);
+    }
+
+    // 图层编辑画笔（图片编辑 / 蒙版 / 补丁涂抹）激活时隐藏蓝色边界，退出后恢复。
+    function isLayerEditingBrushActive() {
+        return Boolean(imageEditActive || maskToolActive || maskBrushMode || patchEditEntry);
+    }
+
+    function syncLayerOutlineSuppression() {
+        const suppress = isLayerEditingBrushActive();
+        if (suppress === layerOutlineSuppressed) return;
+        layerOutlineSuppressed = suppress;
+        if (suppress) {
+            layerOutlineRenderVersion++;
+            const overlay = document.getElementById('layer-outline-overlay');
+            if (overlay) {
+                const context = overlay.getContext('2d');
+                if (context) context.clearRect(0, 0, overlay.width, overlay.height);
+                overlay.classList.remove('is-visible');
+            }
+        } else {
+            outlineSelectedImageLayers();
+        }
+    }
+
+    function outlineSelectedImageLayers() {
+        const overlay = document.getElementById('layer-outline-overlay');
+        if (!overlay || !canvas) return;
+        if (layerOutlineSuppressed) {
+            layerOutlineRenderVersion++;
+            const suppressedContext = overlay.getContext('2d');
+            if (suppressedContext) suppressedContext.clearRect(0, 0, overlay.width, overlay.height);
+            overlay.classList.remove('is-visible');
+            return;
+        }
+        const entries = [...selectedPreviewIds]
+            .map(id => generationPreviewObjects.get(id))
+            .filter(entry => entry && isImageLayerEntry(entry) && !entry.isMain);
+        layerOutlineRenderVersion++;
+        const version = layerOutlineRenderVersion;
+        if (!entries.length) {
+            overlay.classList.remove('is-visible');
+            const emptyContext = overlay.getContext('2d');
+            if (emptyContext) emptyContext.clearRect(0, 0, overlay.width, overlay.height);
+            return;
+        }
+        const width = canvas.originalWidth;
+        const height = canvas.originalHeight;
+        // 蓝色虚线沿非透明区边缘向外偏移 20 像素。
+        const offset = 20;
+        Promise.all(entries.map(entry => new Promise(resolve => {
+            const dataUrl = exportPreviewLayerImage(entry) || entry.sourceImageData || '';
+            if (!dataUrl) { resolve([]); return; }
+            const image = new Image();
+            image.onload = () => resolve(buildLayerOutlineContours(image, width, height, offset));
+            image.onerror = () => resolve([]);
+            image.src = dataUrl;
+        }))).then(lists => {
+            if (version !== layerOutlineRenderVersion || layerOutlineSuppressed) return;
+            const context = ensureLayerOutlineOverlay();
+            if (!context || !overlay) return;
+            context.clearRect(0, 0, overlay.width, overlay.height);
+            const contours = lists.flat();
+            if (!contours.length) { overlay.classList.remove('is-visible'); return; }
+            const zoom = canvas.getZoom() || 1;
+            const unit = 1 / Math.max(0.05, zoom);
+            context.save();
+            context.strokeStyle = '#00aaff';
+            // 线宽与虚线间隔都按缩放换算，保证屏幕上始终是清晰的 1px 虚线。
+            context.lineWidth = unit;
+            context.lineJoin = 'round';
+            context.lineCap = 'round';
+            context.setLineDash([6 * unit, 5 * unit]);
+            contours.forEach(line => {
+                context.beginPath();
+                context.moveTo(line[0][0], line[0][1]);
+                for (let i = 1; i < line.length; i += 1) context.lineTo(line[i][0], line[i][1]);
+                context.stroke();
+            });
+            context.restore();
+            overlay.classList.add('is-visible');
+        });
+    }
+
+    // ---------- 图片图层多选 / 复制 / 合并 ----------
+
+    function togglePreviewMultiSelection(previewId) {
+        const entry = resolveLivePreviewEntry(previewId);
+        if (!entry) return;
+        if (selectedPreviewIds.has(previewId)) {
+            selectedPreviewIds.delete(previewId);
+            if (selectedPreviewId === previewId) selectedPreviewId = [...selectedPreviewIds].slice(-1)[0] || null;
+        } else {
+            selectedPreviewIds.add(previewId);
+            selectedPreviewId = previewId;
+        }
+        if (selectedPreviewIds.size === 0) {
+            selectedPreviewId = null;
+            hideMaskOverlay();
+            stopAnnotationMode();
+            stopMaskBrush();
+            stopPatchBrush();
+            maskToolActive = false;
+            canvas.discardActiveObject();
+            document.getElementById('preview-selection-toolbar').hidden = true;
+            syncGenerationPreviewVisibility();
+            updatePreviewToolbar();
+            updateMergeButton();
+            clearLayerOutline();
+            canvas.requestRenderAll();
+            return;
+        }
+        if (selectedPreviewIds.size === 1) {
+            selectGenerationPreview(selectedPreviewId, {});
+            return;
+        }
+        if (imageEditActive) stopImageEditTool();
+        if (perspectiveCropActive) finishPerspectiveCropUi();
+        stopAnnotationMode();
+        stopMaskBrush();
+        stopPatchBrush();
+        hideMaskOverlay();
+        maskToolActive = false;
+        canvas.discardActiveObject();
+        document.getElementById('preview-selection-toolbar').hidden = false;
+        syncGenerationPreviewVisibility();
+        updatePreviewToolbar();
+        updateMergeButton();
+        outlineSelectedImageLayers();
+        canvas.requestRenderAll();
+        setExpertStatus(`已多选 ${selectedPreviewIds.size} 个图层：可拖动缩略图调整叠放顺序，或点「合并」合成一个新图层`, '#dcdcaa');
+    }
+
+    function duplicatePreviewLayer(previewId) {
+        const entry = generationPreviewObjects.get(previewId);
+        if (!entry || !isImageLayerEntry(entry)) return false;
+        const dataUrl = exportPreviewLayerImage(entry) || entry.sourceImageData || '';
+        if (!dataUrl) { setExpertStatus('复制图层失败：图层内容为空', '#f48771'); return false; }
+        const newId = `copy-${Date.now()}`;
+        const label = (entry.kind?.innerText || '图层').replace(/\s*副本$/, '') + ' 副本';
+        const width = canvas.originalWidth;
+        const height = canvas.originalHeight;
+        fabric.Image.fromURL(dataUrl, img => {
+            if (!img) { setExpertStatus('复制图层失败：新图层加载失败', '#f48771'); return; }
+            img.set({
+                left: 0, top: 0, scaleX: 1, scaleY: 1, angle: 0,
+                selectable: true, evented: true, hasControls: false,
+                lockMovementX: false, lockMovementY: false,
+                lockScalingX: true, lockScalingY: true, lockRotation: true,
+                data: {type: 'advanced-mask', id: newId, assetId: newId, previewVisible: true, isFullImage: true, isMain: false},
+            });
+            canvas.add(img);
+            const newEntry = addGenerationPreview(
+                {id: newId, imageData: dataUrl, overlay: {x: 0, y: 0, w: width, h: height}},
+                img,
+                true,
+                {label}
+            );
+            const items = document.getElementById('generation-preview-items');
+            if (entry.card && entry.card.parentNode === items) items.insertBefore(newEntry.card, entry.card.nextSibling);
+            reorderLayers();
+            canvas.requestRenderAll();
+            // 新图层设为当前图层并直接打开移动开关，方便立即拖动/微调。
+            setFineTunePreview(newEntry.previewId, {activate:true});
+            selectGenerationPreview(newEntry.previewId);
+            setExpertStatus(`已复制图层「${entry.kind?.innerText || ''}」为「${label}」并开启移动（Ctrl+J），可拖动或用方向键微调`, '#4ec9b0');
+            queueHistoryForPage(currentPageGlobal);
+        });
+        return true;
+    }
+
+    function mergeSelectedPreviewLayers() {
+        const entries = [...selectedPreviewIds]
+            .map(id => generationPreviewObjects.get(id))
+            .filter(Boolean);
+        const valid = entries.filter(entry => isImageLayerEntry(entry) && !entry.isMain);
+        if (valid.length < 2) {
+            setExpertStatus('请用 Shift+点击至少选择两个非主图图片图层再合并', '#f48771');
+            return;
+        }
+        if (entries.some(entry => entry.isMain)) {
+            setExpertStatus('主图不参与合并，请只选择非主图图片图层', '#f48771');
+            return;
+        }
+        const mergedObjects = valid.flatMap(entry => previewEntryObjects(entry));
+        const composite = exportObjectsCompositeImage(mergedObjects);
+        if (!composite) { setExpertStatus('合并失败：图层内容导出为空', '#f48771'); return; }
+        const newId = `merged-${Date.now()}`;
+        const width = canvas.originalWidth;
+        const height = canvas.originalHeight;
+        fabric.Image.fromURL(composite, img => {
+            if (!img) { setExpertStatus('合并失败：合成图层加载失败', '#f48771'); return; }
+            img.set({
+                left: 0, top: 0, scaleX: 1, scaleY: 1, angle: 0,
+                selectable: true, evented: true, hasControls: false,
+                lockMovementX: false, lockMovementY: false,
+                lockScalingX: true, lockScalingY: true, lockRotation: true,
+                data: {type: 'advanced-mask', id: newId, assetId: newId, previewVisible: true, isFullImage: true},
+            });
+            canvas.add(img);
+            valid.forEach(entry => {
+                if (imageEditEntry === entry) stopImageEditTool();
+                if (perspectiveCropEntry === entry) finishPerspectiveCropUi();
+                if (patchEditEntry === entry) stopPatchBrush();
+                if (fineTunePreviewId === entry.previewId) setFineTunePreview(null, {render:false});
+            });
+            suppressPreviewCardSync = true;
+            mergedObjects.forEach(object => { stopAdvancedGuideBreathing(object); canvas.remove(object); });
+            suppressPreviewCardSync = false;
+            valid.forEach(entry => {
+                entry.card?.remove();
+                entry.thumbnail?.removeAttribute('src');
+                if (entry.sourceKey) imageAssetSources.delete(entry.sourceKey);
+                generationPreviewObjects.delete(entry.previewId);
+            });
+            const label = `合并图层 ${width}×${height}`;
+            const newEntry = addGenerationPreview(
+                {id: newId, imageData: composite, overlay: {x: 0, y: 0, w: width, h: height}, blendMethod: null},
+                img,
+                true,
+                {label}
+            );
+            reorderLayers();
+            canvas.requestRenderAll();
+            selectGenerationPreview(newEntry.previewId);
+            setExpertStatus(`已把 ${valid.length} 个图层合并为一张新图层`, '#4ec9b0');
+            queueHistoryForPage(currentPageGlobal);
         });
     }
 
@@ -1488,7 +1938,8 @@
         queueHistoryForPage(currentPageGlobal);
     }
 
-    function selectGenerationPreview(previewId) {
+    function selectGenerationPreview(previewId, options = {}) {
+        if (options.shift) { togglePreviewMultiSelection(previewId); return; }
         if (imageEditActive && imageEditEntry && previewId !== imageEditEntry.previewId) stopImageEditTool();
         if (perspectiveCropActive && perspectiveCropEntry && previewId !== perspectiveCropEntry.previewId) finishPerspectiveCropUi();
         if (maskPatchSelection && previewId !== maskPatchSelection.maskPreviewId) {
@@ -1513,8 +1964,9 @@
             generateMaskCropFromSource(previewId);
             return;
         }
-        if (selectedPreviewId === previewId && !document.getElementById('preview-selection-toolbar')?.hidden) {
+        if (selectedPreviewId === previewId && selectedPreviewIds.size <= 1 && !document.getElementById('preview-selection-toolbar')?.hidden) {
             selectedPreviewId = null;
+            selectedPreviewIds.clear();
             hideMaskOverlay();
             stopAnnotationMode();
             stopMaskBrush();
@@ -1524,6 +1976,8 @@
             document.getElementById('preview-selection-toolbar').hidden = true;
             syncGenerationPreviewVisibility();
             updatePreviewToolbar();
+            updateMergeButton();
+            clearLayerOutline();
             canvas.requestRenderAll();
             return;
         }
@@ -1541,6 +1995,7 @@
             maskToolActive = false;
         }
         selectedPreviewId = previewId;
+        selectedPreviewIds = new Set([previewId]);
         canvas.discardActiveObject();
         if (entry.isSelectionMask) {
             // The visible mask is rendered by the isolated overlay; keep its
@@ -1554,6 +2009,8 @@
         document.getElementById('preview-selection-toolbar').hidden = false;
         syncGenerationPreviewVisibility();
         updatePreviewToolbar();
+        updateMergeButton();
+        outlineSelectedImageLayers();
         refreshPatchGenerateHint(entry);
         canvas.requestRenderAll();
     }
@@ -1684,9 +2141,9 @@
         if (options.blendGroup && result.blendMethod !== 'confidence') card.classList.add('comparison-hidden');
         card.draggable = true;
         card.dataset.previewId = previewId;
-        card.onclick = () => {
+        card.onclick = (event) => {
             if (Date.now() < previewClickSuppressUntil) return;
-            selectGenerationPreview(previewId);
+            selectGenerationPreview(previewId, {shift: Boolean(event?.shiftKey)});
         };
 const thumbnail = document.createElement('img');
         thumbnail.alt = label || (isFullImage ? '整图预览' : '局部图层预览');
@@ -1779,10 +2236,13 @@ const thumbnail = document.createElement('img');
         if (entries.some(item => item.isAnnotation)) { annotationMarkerNumber = 1; updateAnnotationMarkerButton(); }
         if (entry.blendGroup) expandedBlendGroups.delete(entry.blendGroup);
         selectedPreviewId = null;
+        selectedPreviewIds.clear();
         maskPatchSelection = null;
         document.getElementById('preview-selection-toolbar').hidden = true;
         canvas.discardActiveObject();
         updatePreviewToolbar();
+        updateMergeButton();
+        clearLayerOutline();
         canvas.requestRenderAll();
         queueHistoryForPage(currentPageGlobal);
     }
@@ -3660,6 +4120,8 @@ const thumbnail = document.createElement('img');
         canvas.setDimensions({ width: totalWidth, height: totalHeight });
         canvas.setViewportTransform([zoom, 0, 0, zoom, offsetX, offsetY]);
         updateMaskOverlayTransform();
+        updateLayerOutlineTransform();
+        scheduleLayerOutlineRefresh();
         canvas.renderAll();
         try { canvas.lowerCanvasEl.style.visibility = 'visible'; } catch(e) {}
     }
@@ -4022,6 +4484,17 @@ const thumbnail = document.createElement('img');
                         e.preventDefault();
                         return;
                     }
+                    if (!imageEditActive && !perspectiveCropActive) {
+                        const target = e.target;
+                        const editingText = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+                        if (!editingText && !canvas?.getActiveObject?.()?.isEditing) {
+                            const entry = selectedPreviewEntry();
+                            if (entry && isImageLayerEntry(entry) && duplicatePreviewLayer(entry.previewId)) {
+                                e.preventDefault();
+                                return;
+                            }
+                        }
+                    }
                 }
                 if (e.key === 'Escape') {
                     if (perspectiveCropActive) { cancelPerspectiveCrop(); e.preventDefault(); return; }
@@ -4181,6 +4654,8 @@ const thumbnail = document.createElement('img');
             canvas.off('mouse:wheel');
             canvas.off('after:render', updateMaskOverlayTransform);
             canvas.on('after:render', updateMaskOverlayTransform);
+            canvas.off('after:render', updateLayerOutlineTransform);
+            canvas.on('after:render', updateLayerOutlineTransform);
         }
 
         // --- 滚轮缩放 ---
@@ -4204,6 +4679,8 @@ const thumbnail = document.createElement('img');
             // 执行缩放并立即请求重绘，确保状态在同一帧内更新
             canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
             updateMaskOverlayTransform();
+            updateLayerOutlineTransform();
+            scheduleLayerOutlineRefresh();
             try { canvas.requestRenderAll(); } catch(e) {}
 
             opt.e.preventDefault();
@@ -4641,6 +5118,7 @@ const thumbnail = document.createElement('img');
              // 每次移动或修改后，强制重排层级
              reorderLayers();
              if (event.target?.data?.type === 'annotation' || event.target?.type === 'activeSelection') updateAnnotationLayerPreview();
+            if (selectedPreviewIds.has(event.target?.data?.previewId)) outlineSelectedImageLayers();
             try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
         });
 
@@ -5523,8 +6001,8 @@ const thumbnail = document.createElement('img');
         return imageData;
     }
 
-    function exportPreviewLayerImage(entry) {
-        const objects = previewEntryObjects(entry);
+    function exportObjectsCompositeImage(targetObjects) {
+        const objects = (targetObjects || []).filter(object => object && object.canvas === canvas);
         if (!objects.length) return null;
         const states = canvas.getObjects().map(object => ({object,visible:object.visible}));
         const background = canvas.backgroundColor;
@@ -5542,6 +6020,10 @@ const thumbnail = document.createElement('img');
         canvas.setViewportTransform(viewport);
         canvas.renderAll();
         return imageData;
+    }
+
+    function exportPreviewLayerImage(entry) {
+        return exportObjectsCompositeImage(previewEntryObjects(entry));
     }
 
     function mainPreviewEntry() {
@@ -6233,6 +6715,8 @@ const thumbnail = document.createElement('img');
     window.updateImageEditBrushFlow = updateImageEditBrushFlow;
     window.updateImageEditBrushHardness = updateImageEditBrushHardness;
     window.copyLassoSelectionToLayer = copyLassoSelectionToLayer;
+    window.mergeSelectedPreviewLayers = mergeSelectedPreviewLayers;
+    window.duplicatePreviewLayer = duplicatePreviewLayer;
     window.startPerspectiveCrop = startPerspectiveCrop;
     window.applyPerspectiveCrop = applyPerspectiveCrop;
     window.cancelPerspectiveCrop = cancelPerspectiveCrop;
