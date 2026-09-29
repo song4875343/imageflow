@@ -2604,9 +2604,10 @@ const thumbnail = document.createElement('img');
         return entry?.isSelectionMask ? entry : null;
     }
 
-    // 可作为“生成补丁”取图源的局部图：单张图片图层、非主图/蒙版/标注，且是局部图层
+    // 可作为“生成补丁”取图源的图片图层：单张图片对象、非主图/蒙版/标注。
+    // 局部图按其非透明轮廓融合；整图（无透明区域）则按整张范围融合。
     function isLocalPatchSourceEntry(entry) {
-        if (!entry || entry.isMain || entry.isSelectionMask || entry.isAnnotation || entry.isFullImage) return false;
+        if (!entry || entry.isMain || entry.isSelectionMask || entry.isAnnotation) return false;
         const objects = previewEntryObjects(entry);
         return objects.length === 1 && objects[0].type === 'image';
     }
@@ -2619,7 +2620,7 @@ const thumbnail = document.createElement('img');
     function refreshPatchGenerateHint(entry) {
         if (!isLocalPatchSourceEntry(entry)) return;
         const label = entry?.kind?.innerText || '当前图层';
-        setExpertStatus(`已选中局部图「${label}」：点「生成补丁」可按该图非透明轮廓融合成置信度补丁；若整图无透明区域则按整张图范围融合`, '#dcdcaa');
+        setExpertStatus(`已选中图片图层「${label}」：点「生成补丁」可按该图层非透明轮廓融合成置信度补丁；若整图无透明区域则按整张图范围融合`, '#dcdcaa');
     }
 
     function stopMaskBrush() {
