@@ -1140,6 +1140,15 @@ def _build_roomspace_html():
 def main():
     api = ImageEditorAPI()
     index_html = (Path(__file__).with_name("index.html")).read_text(encoding="utf-8")
+    # 颜色选区算法单独维护在 color_selection.js；pywebview 以字符串方式加载页面，
+    # 相对路径的 <script src> 不可靠，这里读取后内联进最终 HTML。
+    color_select_tag = '<script src="color_selection.js"></script>'
+    if color_select_tag in index_html:
+        color_selection_path = Path(__file__).with_name("color_selection.js")
+        color_selection_js = color_selection_path.read_text(encoding="utf-8")
+        index_html = index_html.replace(
+            color_select_tag, "<script>\n" + color_selection_js + "\n</script>"
+        )
     roomspace_html = _build_roomspace_html()
     placeholder = 'const ROOMSPACE_SRCDOC = "";'
     roomspace_js = json.dumps(roomspace_html, ensure_ascii=True).replace("</", "<\\/")

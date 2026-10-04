@@ -144,8 +144,43 @@
         .preview-brush-mode { width:20px; min-width:20px; height:20px; padding:0; box-sizing:border-box; font-size:10.5px; border:1px solid rgba(0,0,0,.28); background:#fff; color:#000; border-radius:4px; cursor:pointer; transition:background .12s,border-color .12s,color .12s; display:inline-flex; align-items:center; justify-content:center; }
         .preview-brush-mode svg { width:13px; height:13px; display:block; pointer-events:none; }
         .preview-brush-mode:hover { border-color:#1f5a45; background:rgba(31,90,69,.08); }
-        .preview-brush-mode.is-active { background:#1f5a45; border-color:#1f5a45; color:#fff; }
-        .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
+    .preview-brush-mode.is-active { background:#1f5a45; border-color:#1f5a45; color:#fff; }
+        .image-transform-rotate-wrap { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#9cdcfe; white-space:nowrap; }
+        .image-transform-rotate-wrap[hidden] { display:none; }
+        .image-transform-angle-input { width:52px; height:24px; box-sizing:border-box; padding:0 4px; text-align:center; border:1px solid rgba(255,255,255,.28); border-radius:5px; background:rgba(255,255,255,.06); color:inherit; font:inherit; -moz-appearance:textfield; appearance:textfield; }
+        .image-transform-angle-input:focus { outline:none; border-color:#4aa3df; background:rgba(74,163,223,.12); }
+        .image-transform-angle-input::-webkit-outer-spin-button, .image-transform-angle-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+        body[data-theme="light"] .image-transform-rotate-wrap { color:#1f5a45; }
+        body[data-theme="light"] .image-transform-angle-input { background:#fff; color:#203128; border-color:rgba(25,44,35,.28); }
+        /* 颜色选区控件 */
+        .image-edit-color-controls { display:inline-flex; align-items:center; gap:7px; }
+        .image-edit-color-controls[hidden] { display:none; }
+        #image-edit-eyedropper[hidden], #color-balance-button[hidden] { display:none; }
+        .image-edit-color-swatch { width:18px; height:18px; border-radius:4px; border:1px solid rgba(0,0,0,.35); background:#000; box-shadow:0 0 0 1px rgba(255,255,255,.35) inset; }
+        .image-edit-color-controls label { color:#000; white-space:nowrap; }
+        /* 色彩平衡面板 */
+        .color-balance-panel { width:360px; max-width:calc(100vw - 40px); box-sizing:border-box; margin-bottom:10px; padding:12px 14px; border:1px solid rgba(255,255,255,.16); border-radius:10px; background:rgba(24,26,29,.97); box-shadow:0 12px 34px rgba(0,0,0,.42); }
+        .color-balance-panel[hidden] { display:none; }
+        .color-balance-head { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; color:#f0f3f6; font-size:13px; font-weight:600; }
+        .color-balance-scope { color:#8c959e; font-size:11px; font-weight:400; }
+        .color-balance-row { display:grid; grid-template-columns:34px 1fr 34px 52px; align-items:center; gap:8px; margin:9px 0; }
+        .color-balance-row .cb-label { font-size:12px; color:#d7dde3; }
+        .color-balance-row .cb-label-right { text-align:right; }
+        .color-balance-row input[type=range] { width:100%; height:6px; -webkit-appearance:none; appearance:none; border-radius:3px; background:#555; cursor:pointer; }
+        .color-balance-row input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:11px; height:11px; border-radius:2px; background:#cfcfcf; border:1px solid #4a4a4a; box-shadow:0 1px 2px rgba(0,0,0,.4); }
+        .color-balance-row input[type=range]::-moz-range-thumb { width:11px; height:11px; border-radius:2px; background:#cfcfcf; border:1px solid #4a4a4a; }
+        .cb-cyan-red input[type=range] { background:linear-gradient(90deg,#00e6e6,#7f7f7f,#ff2b2b); }
+        .cb-magenta-green input[type=range] { background:linear-gradient(90deg,#ff00ff,#7f7f7f,#00e000); }
+        .cb-yellow-blue input[type=range] { background:linear-gradient(90deg,#ffe600,#7f7f7f,#2b6bff); }
+        .cb-number { width:52px; height:26px; box-sizing:border-box; padding:0 4px; text-align:center; border:1px solid rgba(255,255,255,.24); border-radius:5px; background:rgba(255,255,255,.05); color:#eef2f5; font:inherit; -moz-appearance:textfield; appearance:textfield; }
+        .cb-number::-webkit-outer-spin-button, .cb-number::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+        .color-balance-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+        body[data-theme="light"] .color-balance-panel { border-color:rgba(25,44,35,.22); background:rgba(255,255,255,.97); box-shadow:0 12px 34px rgba(20,31,25,.2); }
+        body[data-theme="light"] .color-balance-head { color:#213129; }
+        body[data-theme="light"] .color-balance-scope { color:#68756e; }
+        body[data-theme="light"] .color-balance-row .cb-label { color:#203128; }
+        body[data-theme="light"] .cb-number { background:#fff; color:#203128; border-color:rgba(25,44,35,.24); }
+    .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
         .save-choice-overlay[hidden] { display:none; }
         .save-choice-panel { width:330px; max-width:calc(100% - 32px); padding:18px; box-sizing:border-box; border:1px solid #555b62; border-radius:12px; background:#292b2f; box-shadow:0 18px 55px rgba(0,0,0,.55); color:#e6e9ed; }
         .save-choice-title { margin:0 0 7px; font-size:15px; color:#fff; }
@@ -338,6 +373,8 @@
     </style>
     <!-- 引入 Fabric.js -->
     <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
+    <!-- 颜色选区算法（独立文件；打包运行时由 app.py 内联） -->
+    <script src="color_selection.js"></script>
 </head>
 <body>
 
@@ -587,6 +624,32 @@
         </div>
     </div>
     <div id="preview-selection-toolbar" hidden>
+        <div id="color-balance-panel" class="color-balance-panel" hidden>
+            <div class="color-balance-head">色彩平衡<span id="color-balance-scope" class="color-balance-scope"></span></div>
+            <div class="color-balance-row cb-cyan-red">
+                <span class="cb-label">青色</span>
+                <input id="color-balance-cr" type="range" min="-100" max="100" value="0" oninput="updateColorBalanceValue('cr', this.value)">
+                <span class="cb-label cb-label-right">红色</span>
+                <input id="color-balance-cr-num" class="cb-number" type="number" min="-100" max="100" value="0" oninput="updateColorBalanceValue('cr', this.value)">
+            </div>
+            <div class="color-balance-row cb-magenta-green">
+                <span class="cb-label">洋红</span>
+                <input id="color-balance-mg" type="range" min="-100" max="100" value="0" oninput="updateColorBalanceValue('mg', this.value)">
+                <span class="cb-label cb-label-right">绿色</span>
+                <input id="color-balance-mg-num" class="cb-number" type="number" min="-100" max="100" value="0" oninput="updateColorBalanceValue('mg', this.value)">
+            </div>
+            <div class="color-balance-row cb-yellow-blue">
+                <span class="cb-label">黄色</span>
+                <input id="color-balance-yb" type="range" min="-100" max="100" value="0" oninput="updateColorBalanceValue('yb', this.value)">
+                <span class="cb-label cb-label-right">蓝色</span>
+                <input id="color-balance-yb-num" class="cb-number" type="number" min="-100" max="100" value="0" oninput="updateColorBalanceValue('yb', this.value)">
+            </div>
+            <div class="color-balance-actions">
+                <button type="button" class="layer-action" onclick="resetColorBalanceValues()">重置</button>
+                <button type="button" class="layer-action" onclick="toggleColorBalancePanel()">取消</button>
+                <button type="button" class="layer-action is-active" onclick="applyColorBalance()">应用</button>
+            </div>
+        </div>
         <div class="annotation-colors" id="annotation-colors">
             <button class="annotation-color" style="background:#000000" data-color="#000000" onclick="setAnnotationColor('#000000')"></button>
             <button class="annotation-color is-active" style="background:#ff5252" data-color="#ff5252" onclick="setAnnotationColor('#ff5252')"></button>
@@ -635,8 +698,17 @@
                 <button type="button" class="preview-brush-mode" data-image-edit="lasso" title="自由套索：圈选区域后 Ctrl+J 复制为新图层" aria-label="自由套索" onclick="setImageEditMode('lasso')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 2.7 8 6 0 2-1.3 3.1-2.6 4.1-.9.7-1.4 1.2-1.4 2.4v1.2a3 3 0 0 1-3 3c-1.2 0-2-.6-2.6-1.4"/><path d="M12 3c-4.4 0-8 2.7-8 6 0 2 1.3 3.1 2.6 4.1.9.7 1.4 1.2 1.4 2.4"/><circle cx="10" cy="19.5" r="1.3" fill="currentColor" stroke="none"/></svg></button>
                 <button type="button" class="preview-brush-mode" data-image-edit="erase" title="局部擦除：把当前图片图层擦成透明" aria-label="局部擦除" onclick="setImageEditMode('erase')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3.6 15.1a1.5 1.5 0 0 1 0-2.1L13 3.6a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L13 18.5"/><path d="M6.5 10.5l7 7"/></svg></button>
                 <button type="button" class="preview-brush-mode" data-image-edit="mask" title="图层蒙版：用软笔黑白涂抹控制图层显隐" aria-label="图层蒙版" onclick="setImageEditMode('mask')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="4"/><path d="M12 8a4 4 0 0 1 0 8Z" fill="currentColor" stroke="none"/></svg></button>
+                <button type="button" class="preview-brush-mode" data-image-edit="color" title="按颜色建立选区：默认文字颜色，PS 默认容差 32，可调容差或用吸管改色" aria-label="按颜色选区" onclick="setImageEditMode('color')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2M15 10V8M11.5 5.5h2M17 2.5l4 4M6 21l9-9M3 21l1.5-4.5L13 8l3 3-8.5 8.5z"/></svg></button>
             </div>
+            <span id="image-edit-color-controls" class="image-edit-color-controls" hidden>
+                <span id="image-edit-color-swatch" class="image-edit-color-swatch" title="当前目标颜色"></span>
+                <button type="button" id="image-edit-eyedropper" class="preview-brush-mode" title="吸管：在图层上点击取色，重新建立选区" aria-label="吸管取色" onclick="toggleImageEditEyedropper()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l5 5-2 2-5-5z"/><path d="M13 6l-8 8v3h3l8-8"/></svg></button>
+                <label for="image-edit-color-tolerance">容差 <span id="image-edit-color-tolerance-value">32</span></label>
+                <input id="image-edit-color-tolerance" type="range" min="0" max="120" value="32" oninput="updateImageEditColorTolerance(this.value)">
+            </span>
             <button type="button" id="image-transform-button" class="preview-brush-mode" title="调整图层：在图片外包生成可缩放 / 旋转 / 镜像的编辑框" aria-label="调整图层" onclick="toggleImageTransform()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h4"/><path d="M20 8V4h-4"/><path d="M4 16v4h4"/><path d="M20 16v4h-4"/><rect x="8.5" y="8.5" width="7" height="7" rx="1"/></svg></button>
+            <button type="button" id="color-balance-button" class="preview-brush-mode" title="色彩平衡（整个图片层或当前颜色/套索选区）" aria-label="色彩平衡" hidden onclick="toggleColorBalancePanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18" fill="currentColor" stroke="none" opacity="0.55"/><path d="M12 3v18"/></svg></button>
+            <span id="image-transform-rotate-wrap" class="image-transform-rotate-wrap" hidden title="当前图层旋转角度：可直接输入，也会跟随上方旋转把手拖动实时更新（↺/↻ 按钮按 90° 旋转）">旋转 <input id="image-transform-rotate-angle" class="image-transform-angle-input" type="number" min="0" max="360" step="1" value="0" oninput="applyImageTransformAngle(this.value)">°</span>
             <button type="button" id="image-edit-copy-button" class="layer-action" style="min-width:auto;height:26px;" title="复制选区为新图层 (Ctrl+J)" onclick="copyLassoSelectionToLayer()">复制选区</button>
             <div class="preview-brush-mode-group" id="image-edit-mask-modes">
                 <button type="button" class="preview-brush-mode is-active" data-image-mask="subtract" title="隐藏（黑）" aria-label="隐藏" onclick="setImageEditMaskPolarity('subtract')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg></button>
@@ -792,6 +864,15 @@
     let imageEditBrushHardness = 0.3;     // 硬度 0-1
     let imageEditMaskPolarity = 'subtract'; // 'subtract'=隐藏(黑) | 'add'=恢复(白)
     let imageEditCommittedOnce = false;
+    // --- 颜色选区（魔棒/色彩范围）状态 ---
+    let imageEditColorSelect = null;       // { color:{r,g,b}, tolerance, maskCanvas, tintCanvas }
+    let imageEditEyedropperActive = false;
+    let imageEditBaseImageDataCache = null; // 缓存基准图 ImageData，避免重复读取
+    // --- 色彩平衡状态 ---
+    let colorBalanceOpen = false;
+    let colorBalanceValues = { cr: 0, mg: 0, yb: 0 };
+    let colorBalanceTargetPreviewId = null;
+    let colorBalancePreview = null; // 实时预览状态（非破坏性，点「应用」才烘焙）
     // --- 图片图层调整（缩放 / 旋转 / 镜像编辑框）状态 ---
     let imageTransformActive = false;
     let imageTransformEntry = null;
@@ -1172,12 +1253,38 @@
         document.getElementById('edit-image-button')?.classList.toggle('is-active', imageEditActive);
         document.getElementById('perspective-crop-button')?.toggleAttribute('hidden', !canEditImageLayer);
         document.getElementById('perspective-crop-button')?.classList.toggle('is-active', perspectiveCropActive);
+        const colorBalanceButton = document.getElementById('color-balance-button');
+        if (colorBalanceButton) {
+            colorBalanceButton.hidden = !canEditImageLayer;
+            colorBalanceButton.classList.toggle('is-active', colorBalanceOpen);
+        }
+        // 切换/取消选中图层或退出图片编辑时，自动结束色彩平衡预览。
+        if (colorBalanceOpen && colorBalancePreview) {
+            const previewEntry = colorBalancePreview.entry;
+            const stillTargeted = (selectedPreviewId === previewEntry.previewId)
+                || (imageEditActive && imageEditEntry === previewEntry);
+            if (!stillTargeted) {
+                colorBalanceOpen = false;
+                cancelColorBalancePreview();
+                updateColorBalancePanel();
+            }
+        }
         const imageEditRow = document.getElementById('image-edit-row');
         if (imageEditRow) imageEditRow.hidden = !(imageEditActive || imageTransformActive);
         document.getElementById('image-transform-button')?.classList.toggle('is-active', imageTransformActive);
+        const transformRotateWrap = document.getElementById('image-transform-rotate-wrap');
+        if (transformRotateWrap) transformRotateWrap.toggleAttribute('hidden', !imageTransformActive);
         document.querySelectorAll('[data-image-edit]').forEach(btn => btn.classList.toggle('is-active', imageEditActive && btn.dataset.imageEdit === imageEditMode));
+        const isColorEdit = imageEditActive && imageEditMode === 'color';
         const copyButton = document.getElementById('image-edit-copy-button');
-        if (copyButton) copyButton.hidden = !imageEditActive || imageEditMode !== 'lasso';
+        if (copyButton) copyButton.hidden = !imageEditActive || !['lasso', 'color'].includes(imageEditMode);
+        const colorControls = document.getElementById('image-edit-color-controls');
+        if (colorControls) colorControls.hidden = !isColorEdit;
+        const eyedropperButton = document.getElementById('image-edit-eyedropper');
+        if (eyedropperButton) {
+            eyedropperButton.hidden = !isColorEdit;
+            eyedropperButton.classList.toggle('is-active', isColorEdit && imageEditEyedropperActive);
+        }
         const maskModeGroup = document.getElementById('image-edit-mask-modes');
         if (maskModeGroup) maskModeGroup.hidden = !imageEditActive || imageEditMode !== 'mask';
         document.querySelectorAll('[data-image-mask]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.imageMask === imageEditMaskPolarity));
@@ -1204,6 +1311,7 @@
         if (maskRow) maskRow.hidden = !maskToolActive;
         document.querySelectorAll('[data-mask-kind]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.maskKind === maskToolKind));
         document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
+        if (colorBalanceOpen) updateColorBalancePanel();
         syncLayerOutlineSuppression();
     }
 
@@ -3306,6 +3414,9 @@ const thumbnail = document.createElement('img');
         imageEditCommittedOnce = false;
         imageEditMode = null;
         imageEditBaseImg = null;
+        imageEditBaseImageDataCache = null;
+        imageEditColorSelect = null;
+        imageEditEyedropperActive = false;
         imageEditMaskCanvas = document.createElement('canvas');
         imageEditMaskCanvas.width = W; imageEditMaskCanvas.height = H;
         imageEditMaskContext = imageEditMaskCanvas.getContext('2d', {alpha:true});
@@ -3327,7 +3438,12 @@ const thumbnail = document.createElement('img');
             storeEditAsset(object, 'mask', null);
         }
         const baseImg = new Image();
-        baseImg.onload = () => { imageEditBaseImg = baseImg; renderImageEditOverlay(); };
+        baseImg.onload = () => {
+            imageEditBaseImg = baseImg;
+            imageEditBaseImageDataCache = null;
+            if (imageEditActive && imageEditMode === 'color' && imageEditColorSelect) rebuildImageEditColorSelection();
+            else renderImageEditOverlay();
+        };
         baseImg.onerror = () => setExpertStatus('图片编辑：图层内容读取失败', '#f48771');
         baseImg.src = baseData;
         imageEditLassoPoints.length = 0;
@@ -3358,6 +3474,9 @@ const thumbnail = document.createElement('img');
         imageEditLassoPoints.length = 0;
         imageEditLassoClosed = false;
         imageEditBaseImg = null;
+        imageEditBaseImageDataCache = null;
+        imageEditColorSelect = null;
+        imageEditEyedropperActive = false;
         imageEditMaskCanvas = null;
         imageEditMaskContext = null;
         imageEditStrokeCanvas = null;
@@ -3403,11 +3522,92 @@ const thumbnail = document.createElement('img');
         };
     }
 
+    function renderRotateControl(glyph) {
+        return function (ctx, left, top) {
+            ctx.save();
+            ctx.translate(left, top);
+            ctx.beginPath();
+            ctx.arc(0, 0, 9, 0, Math.PI * 2);
+            ctx.fillStyle = '#00aaff';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(glyph, 0, 1);
+            ctx.restore();
+        };
+    }
+
+    function normalizeImageTransformAngle(value) {
+        return ((Number(value) || 0) % 360 + 360) % 360;
+    }
+
+    function imageTransformActiveObject() {
+        return imageTransformEntry ? previewEntryObjects(imageTransformEntry)[0] : null;
+    }
+
+    // 把当前旋转角度同步到工具条文本框（拖动旋转把手时实时更新）。
+    function syncImageTransformAngleInput(angle) {
+        const input = document.getElementById('image-transform-rotate-angle');
+        if (!input || !imageTransformActive) return;
+        const target = imageTransformActiveObject();
+        const source = angle != null ? angle : (target ? target.angle : 0);
+        const normalized = Math.round(normalizeImageTransformAngle(source));
+        if (input.value !== String(normalized)) input.value = String(normalized);
+    }
+
+    // 文本框输入角度 -> 直接旋转当前对象（与手动旋转双向绑定）。
+    function applyImageTransformAngle(value) {
+        if (!imageTransformActive) return;
+        const target = imageTransformActiveObject();
+        if (!target) return;
+        if (String(value == null ? '' : value).trim() === '') return;
+        const angle = Number(value);
+        if (!Number.isFinite(angle)) return;
+        const center = target.getCenterPoint();
+        target.rotate(normalizeImageTransformAngle(angle));
+        target.setPositionByOrigin(center, 'center', 'center');
+        target.setCoords();
+        target.canvas?.requestRenderAll();
+        queueHistoryForPage(currentPageGlobal);
+    }
+
+    // 绕对象中心旋转，保证旋转 90 度时位置不跑偏。
+    function rotateImageTransformTarget(target, sign) {
+        if (!target) return true;
+        const step = 90;
+        const center = target.getCenterPoint();
+        target.rotate(normalizeImageTransformAngle((target.angle || 0) + sign * step));
+        target.setPositionByOrigin(center, 'center', 'center');
+        target.setCoords();
+        target.canvas?.requestRenderAll();
+        queueHistoryForPage(currentPageGlobal);
+        syncImageTransformAngleInput(target.angle);
+        return true;
+    }
+
     function ensureMirrorControls(object) {
         if (!object || !object.controls || object.__mirrorControlsReady) return;
         object.__mirrorControlsReady = true;
         // 复制一份 controls，避免把镜像控件加到所有对象的共享原型控件上。
         object.controls = Object.assign({}, object.controls);
+        // 旋转把手（mtr）左右两侧各加一个 90° 旋转按钮。
+        object.controls.rotateCcw = new fabric.Control({
+            x: 0, y: -0.5, offsetX: -32, offsetY: -40,
+            cursorStyle: 'pointer', withConnection: false,
+            mouseUpHandler: (eventData, transform) => rotateImageTransformTarget(transform?.target, -1),
+            render: renderRotateControl('↺'),
+        });
+        object.controls.rotateCw = new fabric.Control({
+            x: 0, y: -0.5, offsetX: 32, offsetY: -40,
+            cursorStyle: 'pointer', withConnection: false,
+            mouseUpHandler: (eventData, transform) => rotateImageTransformTarget(transform?.target, 1),
+            render: renderRotateControl('↻'),
+        });
         // 放在下边缘两侧、紧贴边框（fabric 控件坐标以对象中心为 0，边缘为 ±0.5）。
         object.controls.flipX = new fabric.Control({
             x: -0.25, y: 0.5, offsetX: 0, offsetY: 16,
@@ -3525,11 +3725,13 @@ const thumbnail = document.createElement('img');
         canvas.setActiveObject(object);
         object.setCoords();
         updatePreviewToolbar();
+        syncImageTransformAngleInput(object.angle);
         canvas.requestRenderAll();
         cropObjectToContent(object).then(() => {
             if (!imageTransformActive || imageTransformEntry !== entry) return;
             applyTransformVisuals(object);
             object.setCoords();
+            syncImageTransformAngleInput(object.angle);
             canvas.requestRenderAll();
             queueHistoryForPage(currentPageGlobal);
         });
@@ -3583,17 +3785,24 @@ const thumbnail = document.createElement('img');
             setFineTunePreview(null, {render:false});
             startImageEditSession(entry);
         }
-        imageEditMode = ['lasso', 'erase', 'mask'].includes(mode) ? mode : 'lasso';
+        imageEditMode = ['lasso', 'erase', 'mask', 'color'].includes(mode) ? mode : 'lasso';
         imageEditStrokeActive = false;
         if (imageEditMode !== 'lasso') clearImageEditLasso();
+        if (imageEditMode !== 'color') imageEditEyedropperActive = false;
+        if (imageEditMode === 'color') {
+            if (!imageEditColorSelect) imageEditColorSelect = { color:null, tolerance:32, maskCanvas:null, tintCanvas:null };
+            updateImageEditColorTolerance(imageEditColorSelect.tolerance);
+            rebuildImageEditColorSelection();
+        }
         updatePreviewToolbar();
         renderImageEditOverlay();
         const hints = {
             lasso: '套索：按住左键圈出选区，Ctrl+J 或点「复制选区」生成新图层',
             erase: '局部擦除：涂抹把当前图层区域擦成透明（生成补丁的前置）',
-            mask: '图层蒙版：涂抹黑=隐藏、白=恢复，可调不透明度/流量/硬度（默认各 30%）'
+            mask: '图层蒙版：涂抹黑=隐藏、白=恢复，可调不透明度/流量/硬度（默认各 30%）',
+            color: '颜色选区：默认按文字颜色（PS 容差 32）自动建立，可调容差或用吸管取色'
         };
-        setExpertStatus(hints[imageEditMode], '#4ec9b0');
+        if (imageEditMode !== 'color') setExpertStatus(hints[imageEditMode], '#4ec9b0');
     }
 
     function setImageEditMaskPolarity(polarity) {
@@ -3698,6 +3907,13 @@ const thumbnail = document.createElement('img');
             }
         }
         if (imageEditMode === 'lasso') drawImageEditLasso(context);
+        if (imageEditMode === 'color' && imageEditColorSelect?.tintCanvas) {
+            context.save();
+            context.globalAlpha = 0.45;
+            context.globalCompositeOperation = 'source-over';
+            context.drawImage(imageEditColorSelect.tintCanvas, 0, 0, W, H);
+            context.restore();
+        }
         context.restore();
         document.getElementById('mask-edit-overlay')?.classList.add('is-visible');
     }
@@ -3811,13 +4027,141 @@ const thumbnail = document.createElement('img');
         return out.toDataURL('image/png');
     }
 
+    // ===== 颜色选区（魔棒/色彩范围，算法见 color_selection.js） =====
+
+    // 基准图（全画布尺寸）的 ImageData，缓存用于颜色统计。
+    function imageEditBaseImageData() {
+        if (!imageEditBaseImg) return null;
+        const W = canvas.originalWidth || imageEditBaseImg.width;
+        const H = canvas.originalHeight || imageEditBaseImg.height;
+        if (imageEditBaseImageDataCache
+            && imageEditBaseImageDataCache.source === imageEditBaseImg
+            && imageEditBaseImageDataCache.width === W
+            && imageEditBaseImageDataCache.height === H) {
+            return imageEditBaseImageDataCache.data;
+        }
+        const tmp = document.createElement('canvas');
+        tmp.width = W; tmp.height = H;
+        const context = tmp.getContext('2d', {alpha:true});
+        context.clearRect(0, 0, W, H);
+        context.drawImage(imageEditBaseImg, 0, 0, W, H);
+        const data = context.getImageData(0, 0, W, H);
+        imageEditBaseImageDataCache = { source: imageEditBaseImg, width: W, height: H, data };
+        return data;
+    }
+
+    function updateImageEditColorSwatch() {
+        const swatch = document.getElementById('image-edit-color-swatch');
+        const color = imageEditColorSelect?.color;
+        if (swatch && color) swatch.style.background = `rgb(${color.r},${color.g},${color.b})`;
+    }
+
+    // 按当前目标颜色 + 容差建立选区遮罩，并生成用于叠加显示的着色层。
+    function rebuildImageEditColorSelection() {
+        if (!imageEditActive || !imageEditColorSelect) return;
+        const data = imageEditBaseImageData();
+        if (!data) return;
+        if (!window.ColorSelection) { setExpertStatus('颜色选区模块未加载', '#f48771'); return; }
+        if (!imageEditColorSelect.color) {
+            const detected = window.ColorSelection.detectTextColor(data);
+            if (!detected) { setExpertStatus('未能自动判断文字颜色，请用吸管在图上取色', '#f48771'); return; }
+            imageEditColorSelect.color = detected;
+        }
+        const W = data.width, H = data.height;
+        const mask = window.ColorSelection.buildColorMask(data, imageEditColorSelect.color, imageEditColorSelect.tolerance);
+        if (!mask) return;
+        const expanded = window.ColorSelection.dilateMask(mask, W, H, window.ColorSelection.DEFAULT_EXPAND);
+        const selected = window.ColorSelection.countSelected(expanded);
+        if (!imageEditColorSelect.maskCanvas) imageEditColorSelect.maskCanvas = document.createElement('canvas');
+        if (!imageEditColorSelect.tintCanvas) imageEditColorSelect.tintCanvas = document.createElement('canvas');
+        const maskCanvas = imageEditColorSelect.maskCanvas;
+        maskCanvas.width = W; maskCanvas.height = H;
+        const maskContext = maskCanvas.getContext('2d', {alpha:true});
+        const out = maskContext.createImageData(W, H);
+        const px = out.data;
+        for (let i = 0, p = 0; i < expanded.length; i += 1, p += 4) {
+            px[p] = 255; px[p + 1] = 255; px[p + 2] = 255; px[p + 3] = expanded[i];
+        }
+        maskContext.putImageData(out, 0, 0);
+        const tintCanvas = imageEditColorSelect.tintCanvas;
+        tintCanvas.width = W; tintCanvas.height = H;
+        const tintContext = tintCanvas.getContext('2d', {alpha:true});
+        tintContext.clearRect(0, 0, W, H);
+        tintContext.fillStyle = '#4aa3df';
+        tintContext.fillRect(0, 0, W, H);
+        tintContext.globalCompositeOperation = 'destination-in';
+        tintContext.drawImage(maskCanvas, 0, 0);
+        tintContext.globalCompositeOperation = 'source-over';
+        updateImageEditColorSwatch();
+        const color = imageEditColorSelect.color;
+        if (selected > 0) {
+            setExpertStatus(`颜色选区：目标 rgb(${color.r},${color.g},${color.b})，容差 ${imageEditColorSelect.tolerance}，已选 ${selected} 像素`, '#4ec9b0');
+        } else {
+            setExpertStatus('颜色选区为空：请提高容差或用吸管重新取色', '#f48771');
+        }
+        if (colorBalanceOpen) updateColorBalancePanel();
+        renderImageEditOverlay();
+    }
+
+    function toggleImageEditEyedropper() {
+        if (!imageEditActive || imageEditMode !== 'color') return;
+        imageEditEyedropperActive = !imageEditEyedropperActive;
+        updatePreviewToolbar();
+        setExpertStatus(imageEditEyedropperActive ? '吸管已开启：在图层上点击取色' : '吸管已关闭', '#4ec9b0');
+    }
+
+    function updateImageEditColorTolerance(value) {
+        const tolerance = Math.max(0, Math.min(120, Math.round(Number(value) || 0)));
+        if (!imageEditColorSelect) imageEditColorSelect = { color:null, tolerance, maskCanvas:null, tintCanvas:null };
+        imageEditColorSelect.tolerance = tolerance;
+        const input = document.getElementById('image-edit-color-tolerance');
+        if (input && Number(input.value) !== tolerance) input.value = String(tolerance);
+        const label = document.getElementById('image-edit-color-tolerance-value');
+        if (label) label.innerText = String(tolerance);
+        if (imageEditActive && imageEditMode === 'color') rebuildImageEditColorSelection();
+    }
+
+    function pickImageEditColorAt(point) {
+        const data = imageEditBaseImageData();
+        if (!data) return;
+        const x = Math.max(0, Math.min(data.width - 1, Math.round(point.x)));
+        const y = Math.max(0, Math.min(data.height - 1, Math.round(point.y)));
+        const p = (y * data.width + x) * 4;
+        const px = data.data;
+        if (px[p + 3] < 8) { setExpertStatus('此处是透明区域，请在图层内容上取色', '#f48771'); return; }
+        if (!imageEditColorSelect) imageEditColorSelect = { color:null, tolerance:32, maskCanvas:null, tintCanvas:null };
+        imageEditColorSelect.color = { r: px[p], g: px[p + 1], b: px[p + 2] };
+        rebuildImageEditColorSelection();
+    }
+
+    // 当前(套索或颜色)选区遮罩 canvas（白=选中，alpha 通道有效）；无选区返回 null。
+    function currentImageEditSelectionMask() {
+        if (!imageEditActive) return null;
+        if (imageEditMode === 'color' && imageEditColorSelect?.maskCanvas) return imageEditColorSelect.maskCanvas;
+        if (imageEditMode === 'lasso' && imageEditLassoClosed && imageEditLassoPoints.length >= 3) {
+            const W = canvas.originalWidth, H = canvas.originalHeight;
+            const maskCanvas = document.createElement('canvas');
+            maskCanvas.width = W; maskCanvas.height = H;
+            const context = maskCanvas.getContext('2d', {alpha:true});
+            context.clearRect(0, 0, W, H);
+            context.beginPath();
+            context.moveTo(imageEditLassoPoints[0].x, imageEditLassoPoints[0].y);
+            for (let i = 1; i < imageEditLassoPoints.length; i += 1) context.lineTo(imageEditLassoPoints[i].x, imageEditLassoPoints[i].y);
+            context.closePath();
+            context.fillStyle = '#ffffff';
+            context.fill();
+            return maskCanvas;
+        }
+        return null;
+    }
+
     function copyLassoSelectionToLayer() {
-        if (!imageEditActive || imageEditMode !== 'lasso') { setExpertStatus('请先选择「套索」并圈出要复制的内容', '#f48771'); return; }
-        if (imageEditLassoPoints.length < 3) { setExpertStatus('选区太小：请按住左键用套索圈出要复制的内容', '#f48771'); return; }
+        if (!imageEditActive || !['lasso', 'color'].includes(imageEditMode)) { setExpertStatus('请先在「套索」或「颜色选区」模式下建立选区', '#f48771'); return; }
+        const selectionMask = currentImageEditSelectionMask();
+        if (!selectionMask) { setExpertStatus('没有可用选区：请先圈选或按颜色建立选区', '#f48771'); return; }
         const srcData = currentImageEditLayerDataUrl();
         if (!srcData) { setExpertStatus('复制失败：图层内容不可用', '#f48771'); return; }
-        const W = maskOverlayCanvas.width, H = maskOverlayCanvas.height;
-        const points = imageEditLassoPoints.map(p => ({x:p.x, y:p.y}));
+        const W = canvas.originalWidth, H = canvas.originalHeight;
         const image = new Image();
         image.onload = () => {
             const out = document.createElement('canvas');
@@ -3827,12 +4171,7 @@ const thumbnail = document.createElement('img');
             context.globalCompositeOperation = 'source-over';
             context.drawImage(image, 0, 0, W, H);
             context.globalCompositeOperation = 'destination-in';
-            context.beginPath();
-            context.moveTo(points[0].x, points[0].y);
-            for (let i = 1; i < points.length; i += 1) context.lineTo(points[i].x, points[i].y);
-            context.closePath();
-            context.fillStyle = '#ffffff';
-            context.fill();
+            context.drawImage(selectionMask, 0, 0, W, H);
             const dataUrl = out.toDataURL('image/png');
             fabric.Image.fromURL(dataUrl, img => {
                 if (!img) { setExpertStatus('复制选区失败：新图层加载失败', '#f48771'); return; }
@@ -3854,6 +4193,226 @@ const thumbnail = document.createElement('img');
         image.src = srcData;
     }
 
+    // ===== 色彩平衡（青色-红色 / 洋红-绿色 / 黄色-蓝色） =====
+
+    function colorBalanceEligibleEntry() {
+        const entry = selectedPreviewEntry();
+        return isImageLayerEntry(entry) ? entry : null;
+    }
+
+    function updateColorBalanceValue(kind, value) {
+        if (!Object.prototype.hasOwnProperty.call(colorBalanceValues, kind)) return;
+        const v = Math.max(-100, Math.min(100, Math.round(Number(value) || 0)));
+        colorBalanceValues[kind] = v;
+        const range = document.getElementById(`color-balance-${kind}`);
+        const num = document.getElementById(`color-balance-${kind}-num`);
+        if (range && Number(range.value) !== v) range.value = String(v);
+        if (num && Number(num.value) !== v) num.value = String(v);
+        renderColorBalancePreview();
+    }
+
+    function resetColorBalanceValues() {
+        colorBalanceValues = { cr: 0, mg: 0, yb: 0 };
+        ['cr', 'mg', 'yb'].forEach((kind) => {
+            const range = document.getElementById(`color-balance-${kind}`);
+            const num = document.getElementById(`color-balance-${kind}-num`);
+            if (range) range.value = '0';
+            if (num) num.value = '0';
+        });
+        renderColorBalancePreview();
+    }
+
+    function updateColorBalancePanel() {
+        const panel = document.getElementById('color-balance-panel');
+        if (panel) panel.hidden = !colorBalanceOpen;
+        document.getElementById('color-balance-button')?.classList.toggle('is-active', colorBalanceOpen);
+        const scope = document.getElementById('color-balance-scope');
+        if (scope) scope.innerText = currentImageEditSelectionMask() ? '（当前选区）' : '（整个图层）';
+    }
+
+    function toggleColorBalancePanel() {
+        if (colorBalanceOpen) {
+            colorBalanceOpen = false;
+            cancelColorBalancePreview();
+            updateColorBalancePanel();
+            return;
+        }
+        const entry = colorBalanceEligibleEntry();
+        if (!entry) { setExpertStatus('请选择一张图片图层后再做色彩平衡', '#f48771'); return; }
+        colorBalanceTargetPreviewId = (imageEditActive && imageEditEntry) ? imageEditEntry.previewId : entry.previewId;
+        colorBalanceOpen = true;
+        resetColorBalanceValues();
+        beginColorBalancePreview();
+        updateColorBalancePanel();
+        setExpertStatus('色彩平衡：拖动色轴即时预览，点「应用」确定，点「取消」还原', '#4ec9b0');
+    }
+
+    // 记录原图层状态并准备预览画布（非破坏性，点「应用」前不改动图层数据）。
+    function beginColorBalancePreview() {
+        cancelColorBalancePreview();
+        const entry = resolveLivePreviewEntry(colorBalanceTargetPreviewId) || colorBalanceEligibleEntry();
+        if (!entry) return;
+        const object = previewEntryObjects(entry)[0];
+        if (!object || object.type !== 'image') return;
+        const editingThis = Boolean(imageEditActive && imageEditEntry === entry && imageEditBaseImg);
+        const selectionMask = editingThis ? currentImageEditSelectionMask() : null;
+        const sourceData = editingThis ? currentImageEditLayerDataUrl() : exportPreviewLayerImage(entry);
+        if (!sourceData) return;
+        const W = canvas.originalWidth, H = canvas.originalHeight;
+        const previewCanvas = document.createElement('canvas');
+        previewCanvas.width = W; previewCanvas.height = H;
+        const previewContext = previewCanvas.getContext('2d', {alpha:true});
+        const image = new Image();
+        image.onload = () => {
+            if (!colorBalanceOpen) return;
+            previewContext.clearRect(0, 0, W, H);
+            previewContext.drawImage(image, 0, 0, W, H);
+            const baseImageData = previewContext.getImageData(0, 0, W, H);
+            let selectionData = null;
+            if (selectionMask) {
+                const maskCanvas = document.createElement('canvas');
+                maskCanvas.width = W; maskCanvas.height = H;
+                const maskContext = maskCanvas.getContext('2d', {alpha:true});
+                maskContext.clearRect(0, 0, W, H);
+                maskContext.drawImage(selectionMask, 0, 0, W, H);
+                selectionData = maskContext.getImageData(0, 0, W, H).data;
+            }
+            const workImageData = previewContext.createImageData(W, H);
+            const workData = workImageData.data;
+            colorBalancePreview = {
+                entry, object, W, H, editingThis,
+                baseImageData, selectionData,
+                workData, workImageData,
+                previewCanvas, previewContext,
+                originalElement: object.getElement ? object.getElement() : object._element,
+                originalTransform: { left: object.left, top: object.top, scaleX: object.scaleX, scaleY: object.scaleY, angle: object.angle, flipX: object.flipX, flipY: object.flipY },
+                originalEditBaseImg: imageEditBaseImg,
+                originalEditCache: imageEditBaseImageDataCache,
+                scheduled: false
+            };
+            renderColorBalancePreview();
+        };
+        image.onerror = () => setExpertStatus('色彩平衡预览失败：图层读取失败', '#f48771');
+        image.src = sourceData;
+    }
+
+    // 根据 baseImageData + 当前色轴数值生成一帧预览。
+    function computeColorBalanceFrame(p) {
+        if (!p) return;
+        const { cr, mg, yb } = colorBalanceValues;
+        p.workData.set(p.baseImageData.data);
+        const dst = p.workData;
+        const sel = p.selectionData;
+        const total = p.W * p.H;
+        for (let i = 0, off = 0; i < total; i += 1, off += 4) {
+            if (dst[off + 3] === 0) continue;
+            if (sel && sel[off + 3] === 0) continue;
+            const r = dst[off] + cr;
+            const g = dst[off + 1] + mg;
+            const b = dst[off + 2] + yb;
+            dst[off] = r < 0 ? 0 : r > 255 ? 255 : r;
+            dst[off + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+            dst[off + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+        }
+        p.previewContext.putImageData(p.workImageData, 0, 0);
+    }
+
+    function applyColorBalancePreviewToTarget(p) {
+        if (p.editingThis) {
+            imageEditBaseImg = p.previewCanvas;
+            imageEditBaseImageDataCache = null;
+            renderImageEditOverlay();
+        } else {
+            p.object.setElement(p.previewCanvas);
+            p.object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+            p.object.setCoords();
+            p.object.dirty = true;
+            canvas.requestRenderAll();
+        }
+    }
+
+    // 拖动色轴时按帧节流刷新预览，保证流畅。
+    function renderColorBalancePreview() {
+        const p = colorBalancePreview;
+        if (!p || p.scheduled) return;
+        p.scheduled = true;
+        requestAnimationFrame(() => {
+            p.scheduled = false;
+            if (colorBalancePreview !== p || !colorBalanceOpen) return;
+            computeColorBalanceFrame(p);
+            applyColorBalancePreviewToTarget(p);
+        });
+    }
+
+    // 还原到预览前的图层状态。
+    function cancelColorBalancePreview() {
+        const p = colorBalancePreview;
+        if (!p) return;
+        colorBalancePreview = null;
+        if (p.editingThis) {
+            imageEditBaseImg = p.originalEditBaseImg;
+            imageEditBaseImageDataCache = p.originalEditCache;
+            if (imageEditActive && imageEditEntry === p.entry) renderImageEditOverlay();
+        } else {
+            if (p.originalElement) p.object.setElement(p.originalElement);
+            p.object.set(p.originalTransform);
+            p.object.setCoords();
+            canvas.requestRenderAll();
+        }
+    }
+
+    // 应用：把当前预览烘焙进图层。
+    function applyColorBalance() {
+        const p = colorBalancePreview;
+        if (!p) {
+            if (!colorBalanceValues.cr && !colorBalanceValues.mg && !colorBalanceValues.yb) {
+                setExpertStatus('色彩平衡数值都为 0，无需应用', '#f48771');
+            } else {
+                setExpertStatus('色彩平衡预览尚未就绪，请稍候再试', '#f48771');
+            }
+            return;
+        }
+        computeColorBalanceFrame(p);
+        applyColorBalancePreviewToTarget(p);
+        const dataUrl = p.previewCanvas.toDataURL('image/png');
+        const { entry, object, W, H, editingThis } = p;
+        const baked = new Image();
+        baked.onload = () => {
+            if (object.canvas !== canvas) { colorBalancePreview = null; return; }
+            entry.sourceImageData = dataUrl;
+            if (entry.sourceKey) imageAssetSources.set(entry.sourceKey, dataUrl);
+            setPreviewThumbnail(entry, dataUrl);
+            if (editingThis) {
+                storeEditAsset(object, 'base', dataUrl);
+                imageEditBaseImg = baked;
+                imageEditBaseImageDataCache = null;
+                if (imageEditMaskCanvas && imageEditMaskContext) {
+                    imageEditMaskContext.clearRect(0, 0, W, H);
+                    imageEditMaskContext.fillStyle = 'rgba(255,255,255,1)';
+                    imageEditMaskContext.fillRect(0, 0, W, H);
+                    storeEditAsset(object, 'mask', null);
+                }
+                imageEditColorSelect = null;
+                imageEditEyedropperActive = false;
+                if (imageEditMode === 'color') imageEditMode = 'lasso';
+                renderImageEditOverlay();
+            } else {
+                object.setElement(baked);
+                object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+                object.setCoords();
+                canvas.requestRenderAll();
+            }
+            colorBalancePreview = null;
+            colorBalanceOpen = false;
+            updateColorBalancePanel();
+            updatePreviewToolbar();
+            queueHistoryForPage(currentPageGlobal);
+            setExpertStatus('色彩平衡已应用', '#4ec9b0');
+        };
+        baked.onerror = () => { colorBalancePreview = null; setExpertStatus('色彩平衡失败：结果图加载失败', '#f48771'); };
+        baked.src = dataUrl;
+    }
+
     function bindImageEditOverlayEvents() {
         if (imageEditEventsBound) return;
         const overlay = document.getElementById('mask-edit-overlay');
@@ -3867,6 +4426,10 @@ const thumbnail = document.createElement('img');
             event.preventDefault();
             imageEditPointerId = event.pointerId;
             try { overlay.setPointerCapture?.(event.pointerId); } catch (error) { /* no-op */ }
+            if (imageEditMode === 'color') {
+                if (imageEditEyedropperActive) pickImageEditColorAt(point);
+                return;
+            }
             if (imageEditMode === 'lasso') {
                 imageEditLassoPoints.length = 0;
                 imageEditLassoClosed = false;
@@ -3884,6 +4447,7 @@ const thumbnail = document.createElement('img');
         });
         overlay.addEventListener('pointermove', event => {
             if (!imageEditActive || event.pointerId !== imageEditPointerId) return;
+            if (imageEditMode === 'color') return;
             const point = maskOverlayPoint(event);
             if (!point) return;
             event.preventDefault();
@@ -3899,6 +4463,7 @@ const thumbnail = document.createElement('img');
         const endStroke = event => {
             if (!imageEditActive || event.pointerId !== imageEditPointerId) return;
             imageEditPointerId = null;
+            if (imageEditMode === 'color') return;
             if (imageEditMode === 'lasso') {
                 if (imageEditLassoPoints.length >= 3) {
                     imageEditLassoClosed = true;
@@ -3931,12 +4496,26 @@ const thumbnail = document.createElement('img');
         stopExpertSelectionDrawing();
         setFineTunePreview(null, {render:false});
         const object = previewEntryObjects(entry)[0];
-        const left = object.left || 0, top = object.top || 0;
-        const width = object.getScaledWidth ? object.getScaledWidth() : (object.width || canvas.originalWidth);
-        const height = object.getScaledHeight ? object.getScaledHeight() : (object.height || canvas.originalHeight);
+        if (!object) { setExpertStatus('该图层暂时无法透视裁剪，请重新选择后再试', '#f48771'); return; }
+        // 用对象四角在“画布原始像素空间”的实际外接矩形作为初始四边形。
+        // 直接读取 left/top + getScaledWidth 在对象带旋转/镜像或非主图时容易错位，
+        // 导致四边形和实际图层位置对不上。
+        let left, top, right, bottom;
+        try {
+            // absolute=true 返回不含 viewportTransform 的画布原始像素坐标。
+            const coords = object.getCoords(true, true);
+            const xs = coords.map(point => point.x), ys = coords.map(point => point.y);
+            left = Math.min(...xs); right = Math.max(...xs);
+            top = Math.min(...ys); bottom = Math.max(...ys);
+        } catch (error) {
+            const width = object.getScaledWidth ? object.getScaledWidth() : (object.width || canvas.originalWidth);
+            const height = object.getScaledHeight ? object.getScaledHeight() : (object.height || canvas.originalHeight);
+            left = object.left || 0; top = object.top || 0;
+            right = left + width; bottom = top + height;
+        }
         const clampX = value => Math.max(0, Math.min(canvas.originalWidth, value));
         const clampY = value => Math.max(0, Math.min(canvas.originalHeight, value));
-        const x0 = clampX(left), y0 = clampY(top), x1 = clampX(left + width), y1 = clampY(top + height);
+        const x0 = clampX(left), y0 = clampY(top), x1 = clampX(right), y1 = clampY(bottom);
         perspectiveCropPoints = [{x:x0, y:y0}, {x:x1, y:y0}, {x:x1, y:y1}, {x:x0, y:y1}];
         perspectiveCropEntry = entry;
         perspectiveCropActive = true;
@@ -4702,7 +5281,7 @@ const thumbnail = document.createElement('img');
             window.addEventListener('keydown', function(e) {
                 // 图片编辑：Ctrl+J 复制套索选区；Esc 退出
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'j' || e.key === 'J')) {
-                    if (imageEditActive && imageEditMode === 'lasso' && imageEditLassoPoints.length >= 3) {
+                    if (imageEditActive && ['lasso', 'color'].includes(imageEditMode) && currentImageEditSelectionMask()) {
                         copyLassoSelectionToLayer();
                         e.preventDefault();
                         return;
@@ -4873,6 +5452,7 @@ const thumbnail = document.createElement('img');
             canvas.off('mouse:up');
             canvas.off('mouse:dblclick');
             canvas.off('object:modified');
+            canvas.off('object:rotating');
             canvas.off('mouse:over');
             canvas.off('mouse:wheel');
             canvas.off('after:render', updateMaskOverlayTransform);
@@ -5336,10 +5916,18 @@ const thumbnail = document.createElement('img');
             });
         } catch(e) {}
 
+        // --- 调整框手动旋转时同步角度文本框 ---
+        canvas.on('object:rotating', event => {
+            if (!imageTransformActive) return;
+            const target = imageTransformActiveObject();
+            if (target && event.target === target) syncImageTransformAngleInput(event.target.angle);
+        });
+
         // --- 层级维护 (防止蒙版盖住文字) ---
         canvas.on('object:modified', event => {
              // 每次移动或修改后，强制重排层级
              reorderLayers();
+             if (imageTransformActive) syncImageTransformAngleInput();
              if (event.target?.data?.type === 'annotation' || event.target?.type === 'activeSelection') updateAnnotationLayerPreview();
             if (selectedPreviewIds.has(event.target?.data?.previewId)) outlineSelectedImageLayers();
             try { queueHistoryForPage(currentPageGlobal); } catch(e) {}
@@ -6938,6 +7526,13 @@ const thumbnail = document.createElement('img');
     window.updateImageEditBrushFlow = updateImageEditBrushFlow;
     window.updateImageEditBrushHardness = updateImageEditBrushHardness;
     window.copyLassoSelectionToLayer = copyLassoSelectionToLayer;
+    window.toggleImageEditEyedropper = toggleImageEditEyedropper;
+    window.updateImageEditColorTolerance = updateImageEditColorTolerance;
+    window.applyImageTransformAngle = applyImageTransformAngle;
+    window.toggleColorBalancePanel = toggleColorBalancePanel;
+    window.updateColorBalanceValue = updateColorBalanceValue;
+    window.resetColorBalanceValues = resetColorBalanceValues;
+    window.applyColorBalance = applyColorBalance;
     window.toggleImageTransform = toggleImageTransform;
     window.mergeSelectedPreviewLayers = mergeSelectedPreviewLayers;
     window.duplicatePreviewLayer = duplicatePreviewLayer;
@@ -7104,7 +7699,8 @@ const thumbnail = document.createElement('img');
     function showHelp() {
         alert('先打开图片，在画布上绘制框选或涂抹蒙版，填写修改描述后点击“生成图片”。\n\n'
             + '生成补丁：选中“编辑蒙版”后点「生成补丁」可在蒙版范围内融合取图源；选中一张“局部图”后点「生成补丁」，会按该图非透明轮廓把它融合成置信度补丁（无透明区域时按整张图范围融合）。\n\n'
-            + '编辑图片图层：选中主图/参考图/补丁等图片图层后点「编辑」图标，可(a)用自由套索圈选并按 Ctrl+J 或点「复制选区」把选区内容复制成可移动的新图层；(b)「局部擦除」把该图层区域擦成透明；(c)「图层蒙版」用黑/白软笔控制图层显隐，画笔可调不透明度/流量/硬度（默认各 30%）。\n\n'
+            + '编辑图片图层：选中主图/参考图/补丁等图片图层后点「编辑」图标，可(a)用自由套索圈选并按 Ctrl+J 或点「复制选区」把选区内容复制成可移动的新图层；(b)「局部擦除」把该图层区域擦成透明；(c)「图层蒙版」用黑/白软笔控制图层显隐，画笔可调不透明度/流量/硬度（默认各 30%）；(d)「颜色选区」默认按图片中的文字颜色（PS 容差 32）自动建立选区，可调容差或用吸管取色。\n\n'
+            + '色彩平衡：选中图片图层后点「色彩平衡」，用青-红 / 洋红-绿 / 黄-蓝三条色轴调整，拖动时即时预览；有颜色/套索选区时只作用于选区，否则作用于整个图层，点「应用」确定、点「取消」还原。\n\n'
             + '透视裁剪：选中图片图层后点「透视裁剪」，拖动四个角点对齐要拉正的四边形，点「应用拉正」生成新的透视校正图层。');
     }
 async function openImageFile() {
@@ -7150,15 +7746,13 @@ async function openImageFile() {
         return new Promise((resolve, reject) => {
             fabric.Image.fromURL(result.data_url, img => {
                 if (!img) { reject(new Error('加载图片失败')); return; }
-                const maxWidth = Math.max(1, canvas.width * 0.5);
-                const maxHeight = Math.max(1, canvas.height * 0.5);
-                const scale = (img.width > maxWidth || img.height > maxHeight)
-                    ? Math.min(maxWidth / Math.max(1, img.width), maxHeight / Math.max(1, img.height))
-                    : 1;
+                // 图层坐标是“画布原始像素空间”。参考图与主图使用同一标准：
+                // 左上角 (0,0) 对齐，并保持自身原始像素尺寸，不拉伸、不缩放，
+                // 这样它与主图/蒙版/选区处于同一像素坐标系，便于对齐取用。
                 img.set({
-                    left: (canvas.width - img.width * scale) / 2,
-                    top: (canvas.height - img.height * scale) / 2,
-                    scaleX: scale, scaleY: scale,
+                    left: 0,
+                    top: 0,
+                    scaleX: 1, scaleY: 1,
                     selectable: true, evented: true, hasControls: true,
                     lockMovementX: false, lockMovementY: false,
                     lockScalingX: false, lockScalingY: false, lockRotation: false,
@@ -7168,7 +7762,7 @@ async function openImageFile() {
                 const item = {
                     id:`file-${Date.now()}`,
                     assetId:`asset-${Date.now()}`,
-                    overlay:{x:img.left, y:img.top, w:Math.round(img.width * scale), h:Math.round(img.height * scale)},
+                    overlay:{x:0, y:0, w:Math.round(img.width), h:Math.round(img.height)},
                     imageData:result.data_url,
                     blendMethod:null, blendLabel:'参考图'
                 };
@@ -7228,6 +7822,13 @@ async function openImageFile() {
     function selectedPreviewImageData() {
         const entry = resolveLivePreviewEntry(selectedPreviewId);
         if (!entry) return null;
+        // 保存选中图片时必须导出“当前编辑状态”，而不是加载/生成时的原始数据，
+        // 否则调整框的移动/缩放/旋转、擦除、图层蒙版等修改都不会体现在文件里。
+        const objects = previewEntryObjects(entry);
+        if (objects.length && !entry.isSelectionMask && !entry.isAnnotation) {
+            const exported = exportObjectsCompositeImage(objects);
+            if (exported) return exported;
+        }
         return entry.sourceImageData || imageAssetSources.get(entry.sourceKey) || null;
     }
 
