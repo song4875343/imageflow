@@ -456,11 +456,12 @@ class ImageEditorAPI:
                 dtype=np.float32,
             )
             matrix = cv2.getPerspectiveTransform(src, dst)
+            # 透视校正是重采样操作，用三次插值比线性更锐利，减少放大后的发糊。
             warped = cv2.warpPerspective(
                 np.array(image),
                 matrix,
                 (out_w, out_h),
-                flags=cv2.INTER_LINEAR,
+                flags=cv2.INTER_CUBIC,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=(0, 0, 0, 0),
             )

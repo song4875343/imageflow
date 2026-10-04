@@ -883,6 +883,8 @@
     let perspectiveCropDragIndex = -1;
     let perspectiveCropEventsBound = false;
     let perspectiveCropBusy = false;
+    // 透视裁剪工作区（可能超出画布，用于容纳旋转后伸出画布的内容）
+    let perspectiveView = null;            // {ox, oy, w, h} 世界像素坐标
     let previewBrushSize = 8;
     let previewClickSuppressUntil = 0; // 拖拽缩略图结束时抑制误点击选中
     let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
@@ -1346,6 +1348,14 @@
         const overlay = document.getElementById('mask-edit-overlay');
         if (!overlay || !canvas?.originalWidth || !canvas?.originalHeight) return;
         const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+        if (perspectiveCropActive && perspectiveView) {
+            // 透视裁剪工作区可能为负偏移（内容伸出画布），按工作区定位叠加层。
+            overlay.style.left = `${vpt[4] + perspectiveView.ox * vpt[0]}px`;
+            overlay.style.top = `${vpt[5] + perspectiveView.oy * vpt[3]}px`;
+            overlay.style.width = `${perspectiveView.w * vpt[0]}px`;
+            overlay.style.height = `${perspectiveView.h * vpt[3]}px`;
+            return;
+        }
         overlay.style.left = `${vpt[4]}px`;
         overlay.style.top = `${vpt[5]}px`;
         overlay.style.width = `${canvas.originalWidth * vpt[0]}px`;
@@ -1462,6 +1472,13 @@
         if (!overlay || !maskOverlayCanvas) return null;
         const rect = overlay.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
+        if (perspectiveCropActive && perspectiveView) {
+            // 透视裁剪：叠加层内部坐标 = 世界坐标 - 工作区偏移，允许伸出画布。
+            return {
+                x: perspectiveView.ox + (event.clientX - rect.left) * perspectiveView.w / rect.width,
+                y: perspectiveView.oy + (event.clientY - rect.top) * perspectiveView.h / rect.height,
+            };
+        }
         return {
             x: Math.max(0, Math.min(maskOverlayCanvas.width, (event.clientX - rect.left) * maskOverlayCanvas.width / rect.width)),
             y: Math.max(0, Math.min(maskOverlayCanvas.height, (event.clientY - rect.top) * maskOverlayCanvas.height / rect.height)),
@@ -4513,21 +4530,37 @@ const thumbnail = document.createElement('img');
             left = object.left || 0; top = object.top || 0;
             right = left + width; bottom = top + height;
         }
-        const clampX = value => Math.max(0, Math.min(canvas.originalWidth, value));
-        const clampY = value => Math.max(0, Math.min(canvas.originalHeight, value));
-        const x0 = clampX(left), y0 = clampY(top), x1 = clampX(right), y1 = clampY(bottom);
+        // 工作区 = 画布范围 ∪ 图层实际范围，并向外留出边距；
+        // 旋转后的图层常伸出画布，工作区随之扩大，四边形才能任意覆盖全部内容。
+        const W = canvas.originalWidth, H = canvas.originalHeight;
+        const pad = Math.max(24, Math.round(Math.max(W, H) * 0.08));
+        const ox = Math.floor(Math.min(0, left) - pad);
+        const oy = Math.floor(Math.min(0, top) - pad);
+        const ex = Math.ceil(Math.max(W, right) + pad);
+        const ey = Math.ceil(Math.max(H, bottom) + pad);
+        const view = { ox, oy, w: Math.max(1, ex - ox), h: Math.max(1, ey - oy) };
+        const clampViewX = value => Math.max(ox - 4, Math.min(ox + view.w + 4, value));
+        const clampViewY = value => Math.max(oy - 4, Math.min(oy + view.h + 4, value));
+        const x0 = clampViewX(left), y0 = clampViewY(top), x1 = clampViewX(right), y1 = clampViewY(bottom);
+        perspectiveView = view;
         perspectiveCropPoints = [{x:x0, y:y0}, {x:x1, y:y0}, {x:x1, y:y1}, {x:x0, y:y1}];
         perspectiveCropEntry = entry;
         perspectiveCropActive = true;
         perspectiveCropDragIndex = -1;
         bindPerspectiveOverlayEvents();
-        ensureMaskOverlayCanvas();
         const overlay = document.getElementById('mask-edit-overlay');
+        if (overlay) {
+            overlay.width = view.w;
+            overlay.height = view.h;
+            maskOverlayCanvas = overlay;
+            maskOverlayContext = overlay.getContext('2d');
+        }
+        updateMaskOverlayTransform();
         overlay?.classList.add('is-visible', 'is-brush-active', 'is-perspective');
         overlay?.classList.remove('is-image-edit', 'is-shape-active');
         updatePreviewToolbar();
         renderPerspectiveGuide();
-        setExpertStatus('透视裁剪：拖动四个角点对齐四边形，满意后点「应用拉正」生成新图层', '#4ec9b0');
+        setExpertStatus('透视裁剪：拖动四个角点对齐四边形（可超出画布），满意后点「应用拉正」生成新图层', '#4ec9b0');
     }
 
     function perspectiveGuideHandleSize() {
@@ -4547,17 +4580,20 @@ const thumbnail = document.createElement('img');
 
     function renderPerspectiveGuide() {
         if (!perspectiveCropActive) return;
-        const context = maskOverlayCanvas ? maskOverlayContext : ensureMaskOverlayCanvas();
-        if (!context) return;
+        const overlay = document.getElementById('mask-edit-overlay');
+        const context = maskOverlayContext || overlay?.getContext('2d');
+        if (!overlay || !context) return;
         const zoom = canvas?.getZoom ? canvas.getZoom() : 1;
         const handle = perspectiveGuideHandleSize();
-        context.clearRect(0, 0, maskOverlayCanvas.width, maskOverlayCanvas.height);
+        const ox = perspectiveView?.ox || 0;
+        const oy = perspectiveView?.oy || 0;
+        context.clearRect(0, 0, overlay.width, overlay.height);
         const points = perspectiveCropPoints;
         if (points.length === 4) {
             context.save();
             context.beginPath();
-            context.moveTo(points[0].x, points[0].y);
-            for (let i = 1; i < 4; i += 1) context.lineTo(points[i].x, points[i].y);
+            context.moveTo(points[0].x - ox, points[0].y - oy);
+            for (let i = 1; i < 4; i += 1) context.lineTo(points[i].x - ox, points[i].y - oy);
             context.closePath();
             context.fillStyle = 'rgba(74,163,223,.16)';
             context.fill();
@@ -4572,13 +4608,13 @@ const thumbnail = document.createElement('img');
                 context.strokeStyle = '#0e639c';
                 context.lineWidth = Math.max(1, 1.5 / (zoom || 1));
                 context.beginPath();
-                context.rect(p.x - handle, p.y - handle, handle * 2, handle * 2);
+                context.rect(p.x - ox - handle, p.y - oy - handle, handle * 2, handle * 2);
                 context.fill();
                 context.stroke();
                 context.restore();
             });
         }
-        document.getElementById('mask-edit-overlay')?.classList.add('is-visible');
+        overlay.classList.add('is-visible');
     }
 
     function bindPerspectiveOverlayEvents() {
@@ -4622,8 +4658,18 @@ const thumbnail = document.createElement('img');
         perspectiveCropEntry = null;
         perspectiveCropPoints = [];
         perspectiveCropDragIndex = -1;
+        perspectiveView = null;
         const overlay = document.getElementById('mask-edit-overlay');
         overlay?.classList.remove('is-visible', 'is-brush-active', 'is-perspective');
+        // 透视裁剪期间叠加层被放大到工作区尺寸，这里恢复为画布尺寸并重置定位。
+        if (overlay) {
+            overlay.width = canvas?.originalWidth || overlay.width;
+            overlay.height = canvas?.originalHeight || overlay.height;
+            maskOverlayCanvas = overlay;
+            maskOverlayContext = overlay.getContext('2d');
+            maskOverlayContext?.clearRect(0, 0, overlay.width, overlay.height);
+        }
+        updateMaskOverlayTransform();
         if (canvas && !maskBrushMode && !patchEditBrushMode && !imageEditActive) {
             canvas.selection = true;
             canvas.isDrawingMode = false;
@@ -4644,54 +4690,51 @@ const thumbnail = document.createElement('img');
         const entry = perspectiveCropEntry;
         const objects = previewEntryObjects(entry);
         if (!entry || objects.length !== 1 || objects[0].type !== 'image') { finishPerspectiveCropUi(); return; }
+        const object = objects[0];
         const points = perspectiveCropPoints.map(p => ({x:Math.round(p.x), y:Math.round(p.y)}));
-        const xs = points.map(p => p.x), ys = points.map(p => p.y);
-        const minX = Math.max(0, Math.floor(Math.min(...xs)));
-        const minY = Math.max(0, Math.floor(Math.min(...ys)));
+        const view = perspectiveView || {ox:0, oy:0, w:canvas.originalWidth, h:canvas.originalHeight};
+        // 图层若被缩小过，则按比例提高采样分辨率（最多 4x），保留原始细节、避免拉正后发糊。
+        const objScale = Math.max(0.0001, Math.min(Math.abs(object.scaleX || 1), Math.abs(object.scaleY || 1)));
+        const comp = Math.max(1, Math.min(4, 1 / objScale));
         const topLen = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
         const bottomLen = Math.hypot(points[2].x - points[3].x, points[2].y - points[3].y);
         const leftLen = Math.hypot(points[3].x - points[0].x, points[3].y - points[0].y);
         const rightLen = Math.hypot(points[2].x - points[1].x, points[2].y - points[1].y);
-        const outWidth = Math.max(8, Math.round((topLen + bottomLen) / 2));
-        const outHeight = Math.max(8, Math.round((leftLen + rightLen) / 2));
-        const sourceLayer = exportPreviewLayerImage(entry);
+        const worldOutW = Math.max(8, (topLen + bottomLen) / 2);
+        const worldOutH = Math.max(8, (leftLen + rightLen) / 2);
+        const outWidth = Math.max(8, Math.round(worldOutW * comp));
+        const outHeight = Math.max(8, Math.round(worldOutH * comp));
+        const minX = Math.floor(Math.min(points[0].x, points[3].x));
+        const minY = Math.floor(Math.min(points[0].y, points[1].y));
+        const localPoints = points.map(p => ({x:Math.round((p.x - view.ox) * comp), y:Math.round((p.y - view.oy) * comp)}));
+        const sourceLayer = exportObjectsRegionImage(objects, view.ox, view.oy, view.w, view.h, comp);
         if (!sourceLayer) { setExpertStatus('透视裁剪失败：图层导出失败', '#f48771'); return; }
         perspectiveCropBusy = true;
         setExpertStatus('正在把四边形拉正并生成新图层...', '#dcdcaa');
         try {
-            const raw = await pywebview.api.perspective_correct_image_data(sourceLayer, JSON.stringify(points), outWidth, outHeight);
+            const raw = await pywebview.api.perspective_correct_image_data(sourceLayer, JSON.stringify(localPoints), outWidth, outHeight);
             const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
             if (result?.error || !result?.imageData) throw new Error(result?.message || result?.error || '拉正失败');
             const rectWidth = result.width || outWidth;
             const rectHeight = result.height || outHeight;
-            const W = canvas.originalWidth, H = canvas.originalHeight;
             await new Promise((resolve, reject) => {
-                const rectImage = new Image();
-                rectImage.onload = () => {
-                    const out = document.createElement('canvas');
-                    out.width = W; out.height = H;
-                    const context = out.getContext('2d', {alpha:true});
-                    context.clearRect(0, 0, W, H);
-                    context.drawImage(rectImage, minX, minY, rectWidth, rectHeight);
-                    const dataUrl = out.toDataURL('image/png');
-                    fabric.Image.fromURL(dataUrl, img => {
-                        if (!img) { reject(new Error('新图层加载失败')); return; }
-                        const layerId = `persp-${Date.now()}`;
-                        img.set({left:0, top:0, scaleX:1, scaleY:1, selectable:true, evented:true, hasControls:false,
-                            lockScalingX:true, lockScalingY:true, lockRotation:true, angle:0,
-                            data:{type:'advanced-mask', id:layerId, assetId:layerId, previewVisible:true, isFullImage:false}});
-                        canvas.add(img);
-                        const newEntry = addGenerationPreview({id:layerId, imageData:dataUrl, overlay:{x:0, y:0, w:W, h:H}}, img, false, {label:'透视校正'});
-                        reorderLayers();
-                        canvas.requestRenderAll();
-                        finishPerspectiveCropUi();
-                        selectGenerationPreview(newEntry.previewId);
-                        queueHistoryForPage(currentPageGlobal);
-                        resolve();
-                    });
-                };
-                rectImage.onerror = () => reject(new Error('拉正结果加载失败'));
-                rectImage.src = result.imageData;
+                fabric.Image.fromURL(result.imageData, img => {
+                    if (!img) { reject(new Error('拉正结果加载失败')); return; }
+                    const layerId = `persp-${Date.now()}`;
+                    // 直接以拉正后的原始位图作为新图层，按世界尺寸摆放（不裁进画布，避免内容被截断/降采样）。
+                    img.set({ left:minX, top:minY, scaleX:1/comp, scaleY:1/comp, selectable:true, evented:true, hasControls:false,
+                        lockScalingX:true, lockScalingY:true, lockRotation:true, angle:0,
+                        data:{type:'advanced-mask', id:layerId, assetId:layerId, previewVisible:true, isFullImage:false}});
+                    canvas.add(img);
+                    const newEntry = addGenerationPreview({id:layerId, imageData:result.imageData,
+                        overlay:{x:minX, y:minY, w:Math.round(rectWidth / comp), h:Math.round(rectHeight / comp)}}, img, false, {label:'透视校正'});
+                    reorderLayers();
+                    canvas.requestRenderAll();
+                    finishPerspectiveCropUi();
+                    selectGenerationPreview(newEntry.previewId);
+                    queueHistoryForPage(currentPageGlobal);
+                    resolve();
+                });
             });
             setExpertStatus('已生成透视校正新图层', '#4ec9b0');
         } catch (error) {
@@ -6835,6 +6878,35 @@ const thumbnail = document.createElement('img');
 
     function exportPreviewLayerImage(entry) {
         return exportObjectsCompositeImage(previewEntryObjects(entry));
+    }
+
+    // 导出指定世界像素区域 (ox,oy,w,h) 的图层内容（可包含画布外的旋转内容）。
+    // multiplier > 1 时按更高分辨率采样，尽量保留原始细节。
+    function exportObjectsRegionImage(targetObjects, ox, oy, w, h, multiplier) {
+        const objects = (targetObjects || []).filter(object => object && object.canvas === canvas);
+        if (!objects.length) return null;
+        const regionW = Math.max(1, Math.round(w));
+        const regionH = Math.max(1, Math.round(h));
+        const scale = Math.max(1, Number(multiplier) || 1);
+        const outW = Math.max(1, Math.round(regionW * scale));
+        const outH = Math.max(1, Math.round(regionH * scale));
+        const states = canvas.getObjects().map(object => ({object,visible:object.visible}));
+        const background = canvas.backgroundColor;
+        const dimensions = {width:canvas.getWidth(),height:canvas.getHeight()};
+        const viewport = canvas.viewportTransform.slice();
+        states.forEach(state => state.object.set('visible', objects.includes(state.object)));
+        canvas.backgroundColor = 'rgba(0,0,0,0)';
+        // 直接放大画布尺寸与视口，保证输出为 regionW*scale × regionH*scale 且映射确定。
+        canvas.setDimensions({width:outW,height:outH});
+        canvas.setViewportTransform([scale,0,0,scale,-Math.round(ox) * scale,-Math.round(oy) * scale]);
+        canvas.renderAll();
+        const imageData = canvas.toDataURL({format:'png',left:0,top:0,width:outW,height:outH,multiplier:1});
+        states.forEach(state => state.object.set('visible', state.visible));
+        canvas.backgroundColor = background;
+        canvas.setDimensions(dimensions);
+        canvas.setViewportTransform(viewport);
+        canvas.renderAll();
+        return imageData;
     }
 
     function mainPreviewEntry() {
