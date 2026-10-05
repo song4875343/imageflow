@@ -778,7 +778,9 @@
             <input id="image-edit-brush-hardness" type="range" min="0" max="100" value="30" oninput="updateImageEditBrushHardness(this.value)">
         </div>
         <div id="perspective-row" class="preview-brush-size-row" hidden>
-            <span class="hint-box" style="margin:0; color:#9cdcfe;">拖动四个角点对齐要拉正的四边形</span>
+            <span class="hint-box" style="margin:0; color:#9cdcfe;">拖动四个角点对齐要拉正的四边形，网格预示拉正后的效果</span>
+            <label for="perspective-grid-divisions">网格 <span id="perspective-grid-divisions-value">3</span></label>
+            <input id="perspective-grid-divisions" type="range" min="1" max="12" value="3" oninput="updatePerspectiveGridDivisions(this.value)">
             <button type="button" class="layer-action" style="min-width:auto;height:26px;" onclick="applyPerspectiveCrop()">应用拉正</button>
             <button type="button" class="layer-action" style="min-width:auto;height:26px;" onclick="cancelPerspectiveCrop()">取消</button>
         </div>
@@ -947,6 +949,7 @@
     let perspectiveCropBusy = false;
     // 透视裁剪工作区（可能超出画布，用于容纳旋转后伸出画布的内容）
     let perspectiveView = null;            // {ox, oy, w, h} 世界像素坐标
+    let perspectiveGridDivisions = 3;      // 四边形内的预估网格划分数（每轴格数）
     let previewBrushSize = 8;
     let previewClickSuppressUntil = 0; // 拖拽缩略图结束时抑制误点击选中
     let annotationBrushKind = 'scribble'; // scribble=涂鸦 | pline=多段线 | rect=矩形 | arrow=箭头
@@ -4985,6 +4988,92 @@ const thumbnail = document.createElement('img');
         return bestDistance <= threshold ? best : -1;
     }
 
+    // 计算“单位正方形 -> 四边形”的投影变换（3x3 齐次矩阵），
+    // 用于把拉正后的规则网格映射回四边形，得到与拉正结果一致的透视收敛线。
+    function perspectiveSquareToQuadMatrix() {
+        const p = perspectiveCropPoints;
+        if (!p || p.length !== 4) return null;
+        const src = [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}];
+        const A = [], b = [];
+        for (let i = 0; i < 4; i += 1) {
+            const {x, y} = src[i];
+            const u = p[i].x, v = p[i].y;
+            A.push([x, y, 1, 0, 0, 0, -x*u, -y*u]); b.push(u);
+            A.push([0, 0, 0, x, y, 1, -x*v, -y*v]); b.push(v);
+        }
+        const h = solveLinearSystem(A, b);
+        return h ? [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1] : null;
+    }
+
+    function solveLinearSystem(A, b) {
+        const n = b.length;
+        const M = A.map((row, i) => row.concat(b[i]));
+        for (let col = 0; col < n; col += 1) {
+            let pivot = col;
+            for (let r = col + 1; r < n; r += 1) {
+                if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+            }
+            if (Math.abs(M[pivot][col]) < 1e-9) return null;
+            if (pivot !== col) { const t = M[pivot]; M[pivot] = M[col]; M[col] = t; }
+            const piv = M[col][col];
+            for (let c = col; c <= n; c += 1) M[col][c] /= piv;
+            for (let r = 0; r < n; r += 1) {
+                if (r === col) continue;
+                const factor = M[r][col];
+                if (!factor) continue;
+                for (let c = col; c <= n; c += 1) M[r][c] -= factor * M[col][c];
+            }
+        }
+        return M.map(row => row[n]);
+    }
+
+    function perspectiveMapPoint(h, u, v) {
+        const d = h[6]*u + h[7]*v + h[8];
+        if (!d) return null;
+        return { x:(h[0]*u + h[1]*v + h[2]) / d, y:(h[3]*u + h[4]*v + h[5]) / d };
+    }
+
+    function updatePerspectiveGridDivisions(value) {
+        const divisions = Math.max(1, Math.min(12, Math.round(Number(value) || 1)));
+        perspectiveGridDivisions = divisions;
+        const label = document.getElementById('perspective-grid-divisions-value');
+        if (label) label.textContent = String(divisions);
+        renderPerspectiveGuide();
+    }
+
+    // 把单位正方形里的规则网格反投影到四边形：直线仍是直线，但间距透视收敛，
+    // 正是“拉正后”会变成等距矩形的效果，供用户提前预估。
+    function drawPerspectiveGrid(context, ox, oy, zoom) {
+        const h = perspectiveSquareToQuadMatrix();
+        if (!h) return;
+        const divisions = Math.max(1, Math.min(12, perspectiveGridDivisions | 0 || 1));
+        const segments = [];
+        for (let i = 1; i < divisions; i += 1) {
+            const t = i / divisions;
+            const verticalTop = perspectiveMapPoint(h, t, 0), verticalBottom = perspectiveMapPoint(h, t, 1);
+            if (verticalTop && verticalBottom) segments.push([verticalTop, verticalBottom]);
+            const horizontalLeft = perspectiveMapPoint(h, 0, t), horizontalRight = perspectiveMapPoint(h, 1, t);
+            if (horizontalLeft && horizontalRight) segments.push([horizontalLeft, horizontalRight]);
+        }
+        if (!segments.length) return;
+        const strokeSegments = (color, width) => {
+            context.save();
+            context.setLineDash([]);
+            context.lineWidth = width;
+            context.strokeStyle = color;
+            context.beginPath();
+            segments.forEach(([a, b]) => {
+                context.moveTo(a.x - ox, a.y - oy);
+                context.lineTo(b.x - ox, b.y - oy);
+            });
+            context.stroke();
+            context.restore();
+        };
+        // 先描深色底再描浅色线，深/浅底图上网格都清晰可辨。
+        strokeSegments('rgba(0,0,0,.35)', Math.max(1.4, 2.2 / (zoom || 1)));
+        strokeSegments('rgba(255,255,255,.78)', Math.max(0.8, 1 / (zoom || 1)));
+    }
+
     function renderPerspectiveGuide() {
         if (!perspectiveCropActive) return;
         const overlay = document.getElementById('mask-edit-overlay');
@@ -5009,6 +5098,7 @@ const thumbnail = document.createElement('img');
             context.strokeStyle = '#4aa3df';
             context.stroke();
             context.restore();
+            drawPerspectiveGrid(context, ox, oy, zoom);
             points.forEach((p, index) => {
                 context.save();
                 context.fillStyle = index === perspectiveCropDragIndex ? '#ffc400' : '#ffffff';
