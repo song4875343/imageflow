@@ -155,7 +155,7 @@
         /* 颜色选区控件 */
         .image-edit-color-controls { display:inline-flex; align-items:center; gap:7px; }
         .image-edit-color-controls[hidden] { display:none; }
-        #image-edit-eyedropper[hidden], #color-balance-button[hidden] { display:none; }
+        #image-edit-eyedropper[hidden], #color-balance-button[hidden], #color-match-button[hidden] { display:none; }
         .image-edit-color-swatch { width:18px; height:18px; border-radius:4px; border:1px solid rgba(0,0,0,.35); background:#000; box-shadow:0 0 0 1px rgba(255,255,255,.35) inset; }
         .image-edit-color-controls label { color:#000; white-space:nowrap; }
         /* 色彩平衡面板 */
@@ -180,6 +180,25 @@
         body[data-theme="light"] .color-balance-scope { color:#68756e; }
         body[data-theme="light"] .color-balance-row .cb-label { color:#203128; }
         body[data-theme="light"] .cb-number { background:#fff; color:#203128; border-color:rgba(25,44,35,.24); }
+        /* 颜色匹配面板（复用色彩平衡的面板/行样式） */
+        .color-match-panel { width:360px; max-width:calc(100vw - 40px); box-sizing:border-box; margin-bottom:10px; padding:12px 14px; border:1px solid rgba(255,255,255,.16); border-radius:10px; background:rgba(24,26,29,.97); box-shadow:0 12px 34px rgba(0,0,0,.42); }
+        .color-match-panel[hidden] { display:none; }
+        .color-match-head { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; color:#f0f3f6; font-size:13px; font-weight:600; }
+        .color-match-ref { color:#8c959e; font-size:11px; font-weight:400; }
+        .color-match-panel .cm-ref-row { display:flex; align-items:center; gap:8px; margin:9px 0; }
+        .color-match-panel .cm-ref-row .cb-label { font-size:12px; color:#d7dde3; white-space:nowrap; }
+        .color-match-panel .cm-ref-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:#8fd6b4; }
+        .color-match-panel .cm-neutralize { display:flex; align-items:center; gap:7px; margin:9px 0; font-size:12px; color:#d7dde3; cursor:pointer; }
+        .color-match-panel .cm-neutralize input { width:14px; height:14px; }
+        .cm-luminance input[type=range] { background:linear-gradient(90deg,#1b1b1b,#ffffff); }
+        .cm-color input[type=range] { background:linear-gradient(90deg,#808080,#ff2b2b,#ffe600,#00e000,#00e6e6,#2b6bff,#ff00ff); }
+        .cm-fade input[type=range] { background:linear-gradient(90deg,#4aa3df,#7f7f7f); }
+        .color-match-panel .color-balance-row { grid-template-columns:56px 1fr 0px 52px; }
+        body[data-theme="light"] .color-match-panel { border-color:rgba(25,44,35,.22); background:rgba(255,255,255,.97); box-shadow:0 12px 34px rgba(20,31,25,.2); }
+        body[data-theme="light"] .color-match-head { color:#213129; }
+        body[data-theme="light"] .color-match-ref { color:#68756e; }
+        body[data-theme="light"] .color-match-panel .cb-label { color:#203128; }
+        body[data-theme="light"] .color-match-panel .cm-neutralize { color:#203128; }
     .save-choice-overlay { position:absolute; inset:0; z-index:500; display:grid; place-items:center; background:rgba(10,12,14,.58); backdrop-filter:blur(3px); }
         .save-choice-overlay[hidden] { display:none; }
         .save-choice-panel { width:330px; max-width:calc(100% - 32px); padding:18px; box-sizing:border-box; border:1px solid #555b62; border-radius:12px; background:#292b2f; box-shadow:0 18px 55px rgba(0,0,0,.55); color:#e6e9ed; }
@@ -375,6 +394,8 @@
     <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
     <!-- 颜色选区算法（独立文件；打包运行时由 app.py 内联） -->
     <script src="color_selection.js"></script>
+    <!-- 颜色匹配算法（独立文件；打包运行时由 app.py 内联） -->
+    <script src="color_match.js"></script>
 </head>
 <body>
 
@@ -650,6 +671,38 @@
                 <button type="button" class="layer-action is-active" onclick="applyColorBalance()">应用</button>
             </div>
         </div>
+        <div id="color-match-panel" class="color-match-panel" hidden>
+            <div class="color-match-head">颜色匹配<span id="color-match-scope" class="color-match-ref"></span></div>
+            <div class="cm-ref-row">
+                <span class="cb-label">参考图层</span>
+                <span id="color-match-ref-name" class="cm-ref-name">请在缩略图中选择</span>
+                <button type="button" class="layer-action" style="min-width:auto;height:24px;padding:0 8px;" onclick="pickColorMatchReference()">重选</button>
+            </div>
+            <div class="color-balance-row cm-luminance">
+                <span class="cb-label">亮度</span>
+                <input id="color-match-luminance" type="range" min="0" max="200" value="100" oninput="updateColorMatchValue('luminance', this.value)">
+                <span class="cb-label cb-label-right"></span>
+                <input id="color-match-luminance-num" class="cb-number" type="number" min="0" max="200" value="100" oninput="updateColorMatchValue('luminance', this.value)">
+            </div>
+            <div class="color-balance-row cm-color">
+                <span class="cb-label">色彩强度</span>
+                <input id="color-match-color" type="range" min="0" max="200" value="100" oninput="updateColorMatchValue('colorIntensity', this.value)">
+                <span class="cb-label cb-label-right"></span>
+                <input id="color-match-color-num" class="cb-number" type="number" min="0" max="200" value="100" oninput="updateColorMatchValue('colorIntensity', this.value)">
+            </div>
+            <div class="color-balance-row cm-fade">
+                <span class="cb-label">渐隐</span>
+                <input id="color-match-fade" type="range" min="0" max="100" value="0" oninput="updateColorMatchValue('fade', this.value)">
+                <span class="cb-label cb-label-right"></span>
+                <input id="color-match-fade-num" class="cb-number" type="number" min="0" max="100" value="0" oninput="updateColorMatchValue('fade', this.value)">
+            </div>
+            <label class="cm-neutralize"><input id="color-match-neutralize" type="checkbox" onchange="toggleColorMatchNeutralize(this.checked)">中和参考色偏</label>
+            <div class="color-balance-actions">
+                <button type="button" class="layer-action" onclick="resetColorMatchValues()">重置</button>
+                <button type="button" class="layer-action" onclick="toggleColorMatchPanel()">取消</button>
+                <button type="button" class="layer-action is-active" onclick="applyColorMatch()">应用</button>
+            </div>
+        </div>
         <div class="annotation-colors" id="annotation-colors">
             <button class="annotation-color" style="background:#000000" data-color="#000000" onclick="setAnnotationColor('#000000')"></button>
             <button class="annotation-color is-active" style="background:#ff5252" data-color="#ff5252" onclick="setAnnotationColor('#ff5252')"></button>
@@ -708,6 +761,7 @@
             </span>
             <button type="button" id="image-transform-button" class="preview-brush-mode" title="调整图层：在图片外包生成可缩放 / 旋转 / 镜像的编辑框" aria-label="调整图层" onclick="toggleImageTransform()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4h4"/><path d="M20 8V4h-4"/><path d="M4 16v4h4"/><path d="M20 16v4h-4"/><rect x="8.5" y="8.5" width="7" height="7" rx="1"/></svg></button>
             <button type="button" id="color-balance-button" class="preview-brush-mode" title="色彩平衡（整个图片层或当前颜色/套索选区）" aria-label="色彩平衡" hidden onclick="toggleColorBalancePanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18" fill="currentColor" stroke="none" opacity="0.55"/><path d="M12 3v18"/></svg></button>
+            <button type="button" id="color-match-button" class="preview-brush-mode" title="颜色匹配（把当前图层颜色匹配到参考图层，复刻 PS 匹配颜色）" aria-label="颜色匹配" hidden onclick="toggleColorMatchPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><circle cx="16" cy="16" r="5"/><path d="M15 4h3.5V7.5"/><path d="M18.5 4 14 8.5"/></svg></button>
             <span id="image-transform-rotate-wrap" class="image-transform-rotate-wrap" hidden title="当前图层旋转角度：可直接输入，也会跟随上方旋转把手拖动实时更新（↺/↻ 按钮按 90° 旋转）">旋转 <input id="image-transform-rotate-angle" class="image-transform-angle-input" type="number" min="0" max="360" step="1" value="0" oninput="applyImageTransformAngle(this.value)">°</span>
             <button type="button" id="image-edit-copy-button" class="layer-action" style="min-width:auto;height:26px;" title="复制选区为新图层 (Ctrl+J)" onclick="copyLassoSelectionToLayer()">复制选区</button>
             <div class="preview-brush-mode-group" id="image-edit-mask-modes">
@@ -873,6 +927,14 @@
     let colorBalanceValues = { cr: 0, mg: 0, yb: 0 };
     let colorBalanceTargetPreviewId = null;
     let colorBalancePreview = null; // 实时预览状态（非破坏性，点「应用」才烘焙）
+    // --- 颜色匹配状态（复刻 PS 匹配颜色，算法见 color_match.js） ---
+    let colorMatchOpen = false;
+    let colorMatchValues = { luminance: 100, colorIntensity: 100, fade: 0, neutralize: false };
+    let colorMatchTargetPreviewId = null;
+    let colorMatchReferenceId = null;
+    let colorMatchReferenceLabel = '';
+    let colorMatchSelectingReference = false;
+    let colorMatchPreview = null; // 实时预览状态（非破坏性，点「应用」才烘焙）
     // --- 图片图层调整（缩放 / 旋转 / 镜像编辑框）状态 ---
     let imageTransformActive = false;
     let imageTransformEntry = null;
@@ -1271,6 +1333,18 @@
                 updateColorBalancePanel();
             }
         }
+        const colorMatchButton = document.getElementById('color-match-button');
+        if (colorMatchButton) {
+            colorMatchButton.hidden = !canEditImageLayer;
+            colorMatchButton.classList.toggle('is-active', colorMatchOpen);
+        }
+        // 切换/取消选中图层或退出图片编辑时，自动结束颜色匹配。
+        if (colorMatchOpen) {
+            const matchTarget = resolveLivePreviewEntry(colorMatchTargetPreviewId);
+            const stillTargeted = matchTarget && ((selectedPreviewId === matchTarget.previewId)
+                || (imageEditActive && imageEditEntry === matchTarget));
+            if (!stillTargeted) closeColorMatch();
+        }
         const imageEditRow = document.getElementById('image-edit-row');
         if (imageEditRow) imageEditRow.hidden = !(imageEditActive || imageTransformActive);
         document.getElementById('image-transform-button')?.classList.toggle('is-active', imageTransformActive);
@@ -1314,6 +1388,7 @@
         document.querySelectorAll('[data-mask-kind]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.maskKind === maskToolKind));
         document.getElementById('annotation-brush-button')?.classList.toggle('is-active', annotationMode === 'brush');
         if (colorBalanceOpen) updateColorBalancePanel();
+        if (colorMatchOpen) updateColorMatchPanel();
         syncLayerOutlineSuppression();
     }
 
@@ -1635,7 +1710,7 @@
             }
             if (entry.fineTuneButton) {
                 const active = fineTunePreviewId === entry.previewId;
-                entry.fineTuneButton.hidden = Boolean(entry.isMain);
+                entry.fineTuneButton.hidden = false;
                 entry.fineTuneButton.classList.toggle('is-active', active);
                 entry.fineTuneButton.innerText = active ? '✓' : '↕';
                 entry.fineTuneButton.title = active ? '退出微调' : '微调图层位置';
@@ -1651,7 +1726,7 @@
         if (!button) return;
         const valid = [...selectedPreviewIds]
             .map(id => generationPreviewObjects.get(id))
-            .filter(entry => entry && isImageLayerEntry(entry) && !entry.isMain);
+            .filter(entry => entry && isImageLayerEntry(entry));
         button.hidden = valid.length < 2;
     }
 
@@ -1838,7 +1913,7 @@
         }
         const entries = [...selectedPreviewIds]
             .map(id => generationPreviewObjects.get(id))
-            .filter(entry => entry && isImageLayerEntry(entry) && !entry.isMain);
+            .filter(entry => entry && isImageLayerEntry(entry));
         layerOutlineRenderVersion++;
         const version = layerOutlineRenderVersion;
         if (!entries.length) {
@@ -1976,13 +2051,9 @@
         const entries = [...selectedPreviewIds]
             .map(id => generationPreviewObjects.get(id))
             .filter(Boolean);
-        const valid = entries.filter(entry => isImageLayerEntry(entry) && !entry.isMain);
+        const valid = entries.filter(entry => isImageLayerEntry(entry));
         if (valid.length < 2) {
-            setExpertStatus('请用 Shift+点击至少选择两个非主图图片图层再合并', '#f48771');
-            return;
-        }
-        if (entries.some(entry => entry.isMain)) {
-            setExpertStatus('主图不参与合并，请只选择非主图图片图层', '#f48771');
+            setExpertStatus('请用 Shift+点击至少选择两个图片图层再合并', '#f48771');
             return;
         }
         const mergedObjects = valid.flatMap(entry => previewEntryObjects(entry));
@@ -2075,6 +2146,19 @@
     }
 
     function selectGenerationPreview(previewId, options = {}) {
+        if (colorMatchSelectingReference) {
+            const refEntry = resolveLivePreviewEntry(previewId);
+            if (!isImageLayerEntry(refEntry)) {
+                setExpertStatus('颜色匹配：参考图层需为一张图片图层', '#f48771');
+                return;
+            }
+            if (refEntry.previewId === colorMatchTargetPreviewId) {
+                setExpertStatus('颜色匹配：请选择当前图层之外的参考图层', '#f48771');
+                return;
+            }
+            startColorMatchWithReference(refEntry);
+            return;
+        }
         if (options.shift) { togglePreviewMultiSelection(previewId); return; }
         if (imageTransformActive && imageTransformEntry && previewId !== imageTransformEntry.previewId) stopImageTransform();
         if (imageEditActive && imageEditEntry && previewId !== imageEditEntry.previewId) stopImageEditTool();
@@ -2083,8 +2167,8 @@
             const sourceEntry = resolveLivePreviewEntry(previewId);
             const sourceObjects = previewEntryObjects(sourceEntry);
             const isImageSource = sourceObjects.length === 1 && sourceObjects[0].type === 'image';
-            if (!sourceEntry || sourceEntry.isMain || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
-                setExpertStatus('取图源必须是主图之外的单张图片缩略图', '#f48771');
+            if (!sourceEntry || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
+                setExpertStatus('取图源必须是单张图片缩略图', '#f48771');
                 return;
             }
             generateMaskPatchFromSource(previewId);
@@ -2094,8 +2178,8 @@
             const sourceEntry = resolveLivePreviewEntry(previewId);
             const sourceObjects = previewEntryObjects(sourceEntry);
             const isImageSource = sourceObjects.length === 1 && sourceObjects[0].type === 'image';
-            if (!sourceEntry || sourceEntry.isMain || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
-                setExpertStatus('取图源必须是主图之外的单张图片缩略图', '#f48771');
+            if (!sourceEntry || sourceEntry.isSelectionMask || sourceEntry.isAnnotation || !isImageSource) {
+                setExpertStatus('取图源必须是单张图片缩略图', '#f48771');
                 return;
             }
             generateMaskCropFromSource(previewId);
@@ -2138,7 +2222,7 @@
         if (entry.isSelectionMask) {
             // The visible mask is rendered by the isolated overlay; keep its
             // hidden guide objects out of Fabric's active selection box.
-        } else if (objects.length === 1 && (!previewLayerReorderable(objects[0]) || fineTunePreviewId === previewId || entry.isMain)) {
+        } else if (objects.length === 1 && (!previewLayerReorderable(objects[0]) || fineTunePreviewId === previewId)) {
             canvas.setActiveObject(objects[0]);
         } else if (objects.length > 1 && (fineTunePreviewId === previewId || objects.every(object => !previewLayerReorderable(object)))) {
             const selection = new fabric.ActiveSelection(objects, {canvas});
@@ -2156,7 +2240,7 @@
     function applyFineTuneLocks(entry) {
         // 参考图/生成图层：未开启“微调”时为锁定态（不可拖动/缩放），
         // 开启微调才解锁；标注/文字/选区等固定层带对象不在此列
-        if (!entry || entry.isMain) return;
+        if (!entry) return;
         const locked = fineTunePreviewId !== entry.previewId;
         previewEntryObjects(entry).forEach(obj => {
             if (!obj?.set || !previewLayerReorderable(obj)) return;
@@ -2176,7 +2260,7 @@
 
     function setFineTunePreview(previewId, options={}) {
         const requested = previewId ? generationPreviewObjects.get(previewId) : null;
-        const nextId = requested && !requested.isMain && previewEntryObjects(requested).some(previewLayerReorderable)
+        const nextId = requested && previewEntryObjects(requested).some(previewLayerReorderable)
             ? requested.previewId : null;
         const changed = fineTunePreviewId !== nextId;
         fineTunePreviewId = nextId;
@@ -2203,7 +2287,7 @@
     function toggleFineTune(previewId) {
         const entry = generationPreviewObjects.get(previewId);
         const objects = previewEntryObjects(entry);
-        if (!entry || entry.isMain || !objects.length) return;
+        if (!entry || !objects.length) return;
         if (imageTransformActive) stopImageTransform();
         if (maskPatchSelection) clearMaskPatchSourceSelection();
         if (maskCropSelection) clearMaskCropSourceSelection();
@@ -2347,10 +2431,6 @@ const thumbnail = document.createElement('img');
         const entries = entry.blendGroup
             ? [...generationPreviewObjects.values()].filter(item => item.blendGroup === entry.blendGroup)
             : [entry];
-        if (entries.some(item => item.isMain)) {
-            setExpertStatus('主图不能直接删除，请先把其他整图置为主图', '#dcdcaa');
-            return;
-        }
         const deletedObjects = entries.flatMap(item => previewEntryObjects(item));
         if (entries.some(item => item.previewId === fineTunePreviewId)) setFineTunePreview(null, {render:false});
         if (entries.includes(patchEditEntry)) stopPatchBrush();
@@ -2436,7 +2516,7 @@ const thumbnail = document.createElement('img');
                 }
             });
         });
-        mainObject.set({left:0,top:0,angle:0,selectable:true,evented:true,lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true});
+        mainObject.set({left:0,top:0,angle:0,selectable:true,evented:true,lockMovementX:false,lockMovementY:false,lockScalingX:false,lockScalingY:false,lockRotation:false});
         canvas.originalWidth = Math.round(mainObject.getScaledWidth());
         canvas.originalHeight = Math.round(mainObject.getScaledHeight());
         document.getElementById('expert-output-width').value = canvas.originalWidth;
@@ -2750,10 +2830,10 @@ const thumbnail = document.createElement('img');
         return entry?.isSelectionMask ? entry : null;
     }
 
-    // 可作为“生成补丁”取图源的图片图层：单张图片对象、非主图/蒙版/标注。
+    // 可作为“生成补丁”取图源的图片图层：单张图片对象、非蒙版/标注。
     // 局部图按其非透明轮廓融合；整图（无透明区域）则按整张范围融合。
     function isLocalPatchSourceEntry(entry) {
-        if (!entry || entry.isMain || entry.isSelectionMask || entry.isAnnotation) return false;
+        if (!entry || entry.isSelectionMask || entry.isAnnotation) return false;
         const objects = previewEntryObjects(entry);
         return objects.length === 1 && objects[0].type === 'image';
     }
@@ -3021,7 +3101,7 @@ const thumbnail = document.createElement('img');
         maskPatchSelection = {maskPreviewId:entry.previewId};
         updatePreviewToolbar();
         setExpertStatus('请选择一个图片缩略图作为取图源', '#dcdcaa');
-        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation && !item.isMain));
+        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation));
     }
 
     function clearMaskPatchSourceSelection() {
@@ -3046,8 +3126,8 @@ const thumbnail = document.createElement('img');
         setFineTunePreview(null, {render:false});
         maskCropSelection = {maskPreviewId: entry.previewId};
         updatePreviewToolbar();
-        setExpertStatus('请选择一张图片缩略图作为蒙板取图源（取图源需为主图之外的单张图片）', '#dcdcaa');
-        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation && !item.isMain));
+        setExpertStatus('请选择一张图片缩略图作为蒙板取图源（取图源需为单张图片）', '#dcdcaa');
+        generationPreviewObjects.forEach(item => item.card.classList.toggle('source-candidate', !item.isSelectionMask && !item.isAnnotation));
     }
 
     function clearMaskCropSourceSelection() {
@@ -3768,7 +3848,6 @@ const thumbnail = document.createElement('img');
     function toggleImageTransform() {
         const entry = selectedPreviewEntry();
         if (!isImageLayerEntry(entry)) { setExpertStatus('请选择一张图片图层后再调整', '#f48771'); return; }
-        if (entry.isMain) { setExpertStatus('主图不支持调整，请先选择其他图片图层', '#f48771'); return; }
         if (imageTransformActive && imageTransformEntry === entry && imageTransformShown()) {
             stopImageTransform();
             setExpertStatus('已退出调整', '#dcdcaa');
@@ -4256,6 +4335,7 @@ const thumbnail = document.createElement('img');
         }
         const entry = colorBalanceEligibleEntry();
         if (!entry) { setExpertStatus('请选择一张图片图层后再做色彩平衡', '#f48771'); return; }
+        if (colorMatchOpen) closeColorMatch();
         colorBalanceTargetPreviewId = (imageEditActive && imageEditEntry) ? imageEditEntry.previewId : entry.previewId;
         colorBalanceOpen = true;
         resetColorBalanceValues();
@@ -4412,6 +4492,11 @@ const thumbnail = document.createElement('img');
                 imageEditColorSelect = null;
                 imageEditEyedropperActive = false;
                 if (imageEditMode === 'color') imageEditMode = 'lasso';
+                // 同步把结果写回图层对象：否则退出图片编辑后对象会恢复成旧图像
+                // （编辑态图层被隐藏、由叠加层预览，提交后必须更新元素本体）。
+                object.setElement(baked);
+                object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+                object.setCoords();
                 renderImageEditOverlay();
             } else {
                 object.setElement(baked);
@@ -4427,6 +4512,328 @@ const thumbnail = document.createElement('img');
             setExpertStatus('色彩平衡已应用', '#4ec9b0');
         };
         baked.onerror = () => { colorBalancePreview = null; setExpertStatus('色彩平衡失败：结果图加载失败', '#f48771'); };
+        baked.src = dataUrl;
+    }
+
+    // ===== 颜色匹配（复刻 PS「匹配颜色」，算法见 color_match.js） =====
+
+    function colorMatchEligibleEntry() {
+        const entry = (imageEditActive && imageEditEntry) ? imageEditEntry : selectedPreviewEntry();
+        return isImageLayerEntry(entry) ? entry : null;
+    }
+
+    function colorMatchRefCandidates() {
+        const targetId = colorMatchTargetPreviewId;
+        return [...generationPreviewObjects.values()]
+            .filter(entry => entry.previewId !== targetId && isImageLayerEntry(entry));
+    }
+
+    function colorMatchValueInputs(kind, id) {
+        return {
+            range: document.getElementById(`color-match-${id}`),
+            num: document.getElementById(`color-match-${id}-num`)
+        };
+    }
+
+    function updateColorMatchValue(kind, value) {
+        if (!Object.prototype.hasOwnProperty.call(colorMatchValues, kind)) return;
+        const max = kind === 'fade' ? 100 : 200;
+        const v = Math.max(0, Math.min(max, Math.round(Number(value) || 0)));
+        colorMatchValues[kind] = v;
+        const id = kind === 'colorIntensity' ? 'color' : kind;
+        const { range, num } = colorMatchValueInputs(kind, id);
+        if (range && Number(range.value) !== v) range.value = String(v);
+        if (num && Number(num.value) !== v) num.value = String(v);
+        renderColorMatchPreview();
+    }
+
+    function toggleColorMatchNeutralize(checked) {
+        colorMatchValues.neutralize = Boolean(checked);
+        renderColorMatchPreview();
+    }
+
+    function resetColorMatchValues() {
+        colorMatchValues = { luminance: 100, colorIntensity: 100, fade: 0, neutralize: false };
+        [['luminance', 'luminance'], ['colorIntensity', 'color'], ['fade', 'fade']].forEach(([key, id]) => {
+            const { range, num } = colorMatchValueInputs(key, id);
+            if (range) range.value = String(colorMatchValues[key]);
+            if (num) num.value = String(colorMatchValues[key]);
+        });
+        const neutral = document.getElementById('color-match-neutralize');
+        if (neutral) neutral.checked = false;
+        renderColorMatchPreview();
+    }
+
+    function updateColorMatchPanel() {
+        const panel = document.getElementById('color-match-panel');
+        if (panel) panel.hidden = !colorMatchOpen;
+        document.getElementById('color-match-button')?.classList.toggle('is-active', colorMatchOpen);
+        const scope = document.getElementById('color-match-scope');
+        if (scope) scope.innerText = currentImageEditSelectionMask() ? '（当前选区）' : '（整个图层）';
+        const refName = document.getElementById('color-match-ref-name');
+        if (refName) {
+            refName.innerText = colorMatchSelectingReference
+                ? '请在缩略图中选择参考图层'
+                : (colorMatchReferenceLabel || '未选择');
+        }
+        const hasRef = Boolean(colorMatchReferenceId) && !colorMatchSelectingReference;
+        [['luminance', 'luminance'], ['colorIntensity', 'color'], ['fade', 'fade']].forEach(([key, id]) => {
+            const { range, num } = colorMatchValueInputs(key, id);
+            if (range) range.disabled = !hasRef;
+            if (num) num.disabled = !hasRef;
+        });
+        const neutral = document.getElementById('color-match-neutralize');
+        if (neutral) neutral.disabled = !hasRef;
+    }
+
+    function toggleColorMatchPanel() {
+        if (colorMatchOpen) {
+            closeColorMatch();
+            setExpertStatus('已取消颜色匹配', '#dcdcaa');
+            return;
+        }
+        const entry = colorMatchEligibleEntry();
+        if (!entry) { setExpertStatus('请选择一张图片图层后再做颜色匹配', '#f48771'); return; }
+        if (colorBalanceOpen) { colorBalanceOpen = false; cancelColorBalancePreview(); updateColorBalancePanel(); }
+        colorMatchTargetPreviewId = entry.previewId;
+        colorMatchReferenceId = null;
+        colorMatchReferenceLabel = '';
+        colorMatchValues = { luminance: 100, colorIntensity: 100, fade: 0, neutralize: false };
+        colorMatchOpen = true;
+        beginColorMatchReferenceSelection();
+        setExpertStatus('颜色匹配：请点击一个图片缩略图作为参考图层', '#dcdcaa');
+    }
+
+    function beginColorMatchReferenceSelection() {
+        colorMatchSelectingReference = true;
+        colorMatchValues = { luminance: 100, colorIntensity: 100, fade: 0, neutralize: false };
+        [['luminance', 'luminance'], ['colorIntensity', 'color'], ['fade', 'fade']].forEach(([key, id]) => {
+            const { range, num } = colorMatchValueInputs(key, id);
+            if (range) range.value = String(colorMatchValues[key]);
+            if (num) num.value = String(colorMatchValues[key]);
+        });
+        const neutral = document.getElementById('color-match-neutralize');
+        if (neutral) neutral.checked = false;
+        generationPreviewObjects.forEach(item => item.card.classList.remove('source-candidate'));
+        colorMatchRefCandidates().forEach(item => item.card.classList.add('source-candidate'));
+        updatePreviewToolbar();
+    }
+
+    function pickColorMatchReference() {
+        if (!colorMatchOpen) return;
+        cancelColorMatchPreview();
+        colorMatchReferenceId = null;
+        colorMatchReferenceLabel = '';
+        beginColorMatchReferenceSelection();
+        setExpertStatus('颜色匹配：请点击一个图片缩略图作为参考图层', '#dcdcaa');
+    }
+
+    function clearColorMatchReferenceSelection() {
+        colorMatchSelectingReference = false;
+        generationPreviewObjects.forEach(item => item.card.classList.remove('source-candidate'));
+    }
+
+    function closeColorMatch() {
+        clearColorMatchReferenceSelection();
+        cancelColorMatchPreview();
+        colorMatchOpen = false;
+        colorMatchReferenceId = null;
+        colorMatchReferenceLabel = '';
+        colorMatchTargetPreviewId = null;
+        updateColorMatchPanel();
+        updatePreviewToolbar();
+    }
+
+    function startColorMatchWithReference(refEntry) {
+        clearColorMatchReferenceSelection();
+        colorMatchReferenceId = refEntry.previewId;
+        colorMatchReferenceLabel = (refEntry.kind && refEntry.kind.innerText) || '参考图层';
+        updateColorMatchPanel();
+        updatePreviewToolbar();
+        beginColorMatchPreview();
+        setExpertStatus(`颜色匹配：参考图层「${colorMatchReferenceLabel}」已选，可微调亮度 / 色彩强度 / 渐隐，满意后点「应用」`, '#4ec9b0');
+    }
+
+    function colorMatchLoadImageData(src, W, H) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = W; c.height = H;
+                const cx = c.getContext('2d', {alpha:true});
+                cx.clearRect(0, 0, W, H);
+                cx.drawImage(image, 0, 0, W, H);
+                resolve(cx.getImageData(0, 0, W, H));
+            };
+            image.onerror = () => reject(new Error('图片加载失败'));
+            image.src = src;
+        });
+    }
+
+    // 读取目标 / 参考图层像素，计算 LAB 统计与逐帧预览所需缓存（非破坏性）。
+    async function beginColorMatchPreview() {
+        cancelColorMatchPreview();
+        const entry = resolveLivePreviewEntry(colorMatchTargetPreviewId) || colorMatchEligibleEntry();
+        const refEntry = resolveLivePreviewEntry(colorMatchReferenceId);
+        if (!entry || !refEntry) { setExpertStatus('颜色匹配：目标或参考图层已失效', '#f48771'); return; }
+        const object = previewEntryObjects(entry)[0];
+        if (!object || object.type !== 'image') { setExpertStatus('颜色匹配：目标图层不可用', '#f48771'); return; }
+        if (!window.ColorMatch) { setExpertStatus('颜色匹配模块未加载', '#f48771'); return; }
+        const editingThis = Boolean(imageEditActive && imageEditEntry === entry && imageEditBaseImg);
+        const selectionMask = editingThis ? currentImageEditSelectionMask() : null;
+        const sourceData = editingThis ? currentImageEditLayerDataUrl() : exportPreviewLayerImage(entry);
+        const refData = exportPreviewLayerImage(refEntry);
+        if (!sourceData || !refData) { setExpertStatus('颜色匹配：图层读取失败', '#f48771'); return; }
+        const W = canvas.originalWidth, H = canvas.originalHeight;
+        let baseImageData, refImageData;
+        try {
+            baseImageData = await colorMatchLoadImageData(sourceData, W, H);
+            refImageData = await colorMatchLoadImageData(refData, W, H);
+        } catch (error) {
+            setExpertStatus('颜色匹配：图层读取失败', '#f48771');
+            return;
+        }
+        if (!colorMatchOpen || colorMatchReferenceId !== refEntry.previewId) return;
+        let selectionData = null;
+        if (selectionMask) {
+            const maskCanvas = document.createElement('canvas');
+            maskCanvas.width = W; maskCanvas.height = H;
+            const maskContext = maskCanvas.getContext('2d', {alpha:true});
+            maskContext.clearRect(0, 0, W, H);
+            maskContext.drawImage(selectionMask, 0, 0, W, H);
+            selectionData = maskContext.getImageData(0, 0, W, H).data;
+        }
+        const srcStats = window.ColorMatch.computeStats(baseImageData, {selectionData});
+        const refStats = window.ColorMatch.computeStats(refImageData);
+        if (!srcStats || !refStats) { setExpertStatus('颜色匹配：有效像素不足，请换一张参考图层', '#f48771'); return; }
+        const previewCanvas = document.createElement('canvas');
+        previewCanvas.width = W; previewCanvas.height = H;
+        const previewContext = previewCanvas.getContext('2d', {alpha:true});
+        previewContext.putImageData(baseImageData, 0, 0);
+        const workImageData = previewContext.createImageData(W, H);
+        colorMatchPreview = {
+            entry, object, W, H, editingThis,
+            baseImageData, selectionData, srcStats, refStats,
+            labCache: window.ColorMatch.buildLabCache(baseImageData),
+            workData: workImageData.data, workImageData,
+            previewCanvas, previewContext,
+            originalElement: object.getElement ? object.getElement() : object._element,
+            originalTransform: { left: object.left, top: object.top, scaleX: object.scaleX, scaleY: object.scaleY, angle: object.angle, flipX: object.flipX, flipY: object.flipY },
+            originalEditBaseImg: imageEditBaseImg,
+            originalEditCache: imageEditBaseImageDataCache,
+            scheduled: false
+        };
+        renderColorMatchPreview();
+        updateColorMatchPanel();
+    }
+
+    function computeColorMatchFrame(p) {
+        if (!p || !window.ColorMatch) return;
+        window.ColorMatch.matchInto(p.baseImageData, p.srcStats, p.refStats, {
+            luminance: colorMatchValues.luminance / 100,
+            colorIntensity: colorMatchValues.colorIntensity / 100,
+            fade: colorMatchValues.fade / 100,
+            neutralize: colorMatchValues.neutralize,
+            selectionData: p.selectionData
+        }, p.workData, p.labCache);
+        p.previewContext.putImageData(p.workImageData, 0, 0);
+    }
+
+    function applyColorMatchPreviewToTarget(p) {
+        if (p.editingThis) {
+            imageEditBaseImg = p.previewCanvas;
+            imageEditBaseImageDataCache = null;
+            renderImageEditOverlay();
+        } else {
+            p.object.setElement(p.previewCanvas);
+            p.object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+            p.object.setCoords();
+            p.object.dirty = true;
+            canvas.requestRenderAll();
+        }
+    }
+
+    // 滑块变化时按帧节流刷新预览。
+    function renderColorMatchPreview() {
+        const p = colorMatchPreview;
+        if (!p || p.scheduled || !colorMatchOpen) return;
+        p.scheduled = true;
+        requestAnimationFrame(() => {
+            p.scheduled = false;
+            if (colorMatchPreview !== p || !colorMatchOpen) return;
+            computeColorMatchFrame(p);
+            applyColorMatchPreviewToTarget(p);
+        });
+    }
+
+    // 还原到预览前的图层状态。
+    function cancelColorMatchPreview() {
+        const p = colorMatchPreview;
+        if (!p) return;
+        colorMatchPreview = null;
+        if (p.editingThis) {
+            imageEditBaseImg = p.originalEditBaseImg;
+            imageEditBaseImageDataCache = p.originalEditCache;
+            if (imageEditActive && imageEditEntry === p.entry) renderImageEditOverlay();
+        } else {
+            if (p.originalElement) p.object.setElement(p.originalElement);
+            p.object.set(p.originalTransform);
+            p.object.setCoords();
+            canvas.requestRenderAll();
+        }
+    }
+
+    // 应用：把当前预览烘焙进图层。
+    function applyColorMatch() {
+        const p = colorMatchPreview;
+        if (!p) { setExpertStatus('颜色匹配预览尚未就绪，请先选择参考图层', '#f48771'); return; }
+        computeColorMatchFrame(p);
+        applyColorMatchPreviewToTarget(p);
+        const dataUrl = p.previewCanvas.toDataURL('image/png');
+        const { entry, object, W, H, editingThis } = p;
+        const baked = new Image();
+        baked.onload = () => {
+            if (object.canvas !== canvas) { colorMatchPreview = null; return; }
+            entry.sourceImageData = dataUrl;
+            if (entry.sourceKey) imageAssetSources.set(entry.sourceKey, dataUrl);
+            setPreviewThumbnail(entry, dataUrl);
+            if (editingThis) {
+                storeEditAsset(object, 'base', dataUrl);
+                imageEditBaseImg = baked;
+                imageEditBaseImageDataCache = null;
+                if (imageEditMaskCanvas && imageEditMaskContext) {
+                    imageEditMaskContext.clearRect(0, 0, W, H);
+                    imageEditMaskContext.fillStyle = 'rgba(255,255,255,1)';
+                    imageEditMaskContext.fillRect(0, 0, W, H);
+                    storeEditAsset(object, 'mask', null);
+                }
+                imageEditColorSelect = null;
+                imageEditEyedropperActive = false;
+                if (imageEditMode === 'color') imageEditMode = 'lasso';
+                // 同步把结果写回图层对象：否则退出图片编辑后对象会恢复成旧图像
+                // （编辑态图层被隐藏、由叠加层预览，提交后必须更新元素本体）。
+                object.setElement(baked);
+                object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+                object.setCoords();
+                renderImageEditOverlay();
+            } else {
+                object.setElement(baked);
+                object.set({ left:0, top:0, scaleX:1, scaleY:1, angle:0, flipX:false, flipY:false });
+                object.setCoords();
+                canvas.requestRenderAll();
+            }
+            colorMatchPreview = null;
+            clearColorMatchReferenceSelection();
+            colorMatchOpen = false;
+            colorMatchReferenceId = null;
+            colorMatchReferenceLabel = '';
+            colorMatchTargetPreviewId = null;
+            updateColorMatchPanel();
+            updatePreviewToolbar();
+            queueHistoryForPage(currentPageGlobal);
+            setExpertStatus('颜色匹配已应用', '#4ec9b0');
+        };
+        baked.onerror = () => { colorMatchPreview = null; setExpertStatus('颜色匹配失败：结果图加载失败', '#f48771'); };
         baked.src = dataUrl;
     }
 
@@ -5390,7 +5797,7 @@ const thumbnail = document.createElement('img');
                 if (fineTunePreviewId) {
                     const fineTuneEntry = generationPreviewObjects.get(fineTunePreviewId);
                     const fineTuneObjects = previewEntryObjects(fineTuneEntry);
-                    if (fineTuneEntry && !fineTuneEntry.isMain && fineTuneObjects.length) {
+                    if (fineTuneEntry && fineTuneObjects.length) {
                         const step = 1;
                         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
                         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -5991,10 +6398,11 @@ const thumbnail = document.createElement('img');
     function reorderLayers() {
         const objects = canvas.getObjects();
         const backgrounds = objects.filter(obj => !obj.data || obj.data?.type === 'main-image');
+        const mainImageSet = new Set(backgrounds);
         const masks = objects.filter(obj => ['mask','advanced-mask','advanced-mask-guide'].includes(obj.data?.type));
         const expertGuides = objects.filter(obj => obj.data?.type === 'expert-guide');
         const annotations = objects.filter(obj => obj.data?.type === 'annotation');
-        const others = objects.filter(obj => !backgrounds.includes(obj) && !masks.includes(obj) && !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
+        const others = objects.filter(obj => !mainImageSet.has(obj) && !masks.includes(obj) && !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
         const texts = objects.filter(obj => obj.data?.type === 'text');
         backgrounds.concat(masks, others, texts, expertGuides, annotations).forEach((obj, index) => canvas.moveTo(obj, index));
     }
@@ -6068,6 +6476,7 @@ const thumbnail = document.createElement('img');
         });
         const objects = canvas.getObjects();
         const backgrounds = objects.filter(obj => !obj.data || obj.data?.type === 'main-image');
+        const mainImageSet = new Set(backgrounds);
         const masks = objects.filter(obj => ['mask','advanced-mask','advanced-mask-guide'].includes(obj.data?.type));
         const layerSet = new Set(layerObjects);
         const masksFixed = masks.filter(obj => !layerSet.has(obj));
@@ -6076,7 +6485,7 @@ const thumbnail = document.createElement('img');
         const texts = objects.filter(obj => obj.data?.type === 'text');
         // 非预览图层：固定样式不带条带的对象按原相对顺序
         const others = objects.filter(obj =>
-            !backgrounds.includes(obj) && !masksFixed.includes(obj) && !layerSet.has(obj) &&
+            !mainImageSet.has(obj) && !masksFixed.includes(obj) && !layerSet.has(obj) &&
             !expertGuides.includes(obj) && !annotations.includes(obj) && obj.data?.type !== 'text');
         backgrounds.concat(masksFixed, others, layerObjects, texts, expertGuides, annotations)
             .forEach((obj, index) => canvas.moveTo(obj, index));
@@ -7773,6 +8182,7 @@ const thumbnail = document.createElement('img');
             + '生成补丁：选中“编辑蒙版”后点「生成补丁」可在蒙版范围内融合取图源；选中一张“局部图”后点「生成补丁」，会按该图非透明轮廓把它融合成置信度补丁（无透明区域时按整张图范围融合）。\n\n'
             + '编辑图片图层：选中主图/参考图/补丁等图片图层后点「编辑」图标，可(a)用自由套索圈选并按 Ctrl+J 或点「复制选区」把选区内容复制成可移动的新图层；(b)「局部擦除」把该图层区域擦成透明；(c)「图层蒙版」用黑/白软笔控制图层显隐，画笔可调不透明度/流量/硬度（默认各 30%）；(d)「颜色选区」默认按图片中的文字颜色（PS 容差 32）自动建立选区，可调容差或用吸管取色。\n\n'
             + '色彩平衡：选中图片图层后点「色彩平衡」，用青-红 / 洋红-绿 / 黄-蓝三条色轴调整，拖动时即时预览；有颜色/套索选区时只作用于选区，否则作用于整个图层，点「应用」确定、点「取消」还原。\n\n'
+            + '颜色匹配：选中图片图层后进入「图片编辑」点「颜色匹配」，再点一个图片缩略图作为参考图层；当前图层会按参考图层在 Lab 空间的均值/标准差实时匹配（复刻 PS 匹配颜色），可调亮度 / 色彩强度 / 渐隐或勾选「中和参考色偏」，满意后点「应用」确定、点「取消」还原。\n\n'
             + '透视裁剪：选中图片图层后点「透视裁剪」，拖动四个角点对齐要拉正的四边形，点「应用拉正」生成新的透视校正图层。');
     }
 async function openImageFile() {

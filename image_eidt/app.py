@@ -1150,6 +1150,14 @@ def main():
         index_html = index_html.replace(
             color_select_tag, "<script>\n" + color_selection_js + "\n</script>"
         )
+    # 颜色匹配算法同样独立维护在 color_match.js，这里一并内联。
+    color_match_tag = '<script src="color_match.js"></script>'
+    if color_match_tag in index_html:
+        color_match_path = Path(__file__).with_name("color_match.js")
+        color_match_js = color_match_path.read_text(encoding="utf-8")
+        index_html = index_html.replace(
+            color_match_tag, "<script>\n" + color_match_js + "\n</script>"
+        )
     roomspace_html = _build_roomspace_html()
     placeholder = 'const ROOMSPACE_SRCDOC = "";'
     roomspace_js = json.dumps(roomspace_html, ensure_ascii=True).replace("</", "<\\/")
